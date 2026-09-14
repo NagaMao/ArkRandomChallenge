@@ -1,0 +1,507 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #f0f2f5;
+    color: #333;
+    line-height: 1.6;
+}
+
+#app {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+header {
+    text-align: center;
+    padding: 30px 0 20px;
+}
+
+header h1 {
+    font-size: 2.2em;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.subtitle {
+    color: #666;
+    font-size: 0.95em;
+}
+
+.panel {
+    background: #fff;
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 24px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+.panel h2 {
+    font-size: 1.1em;
+    margin-bottom: 16px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #f0f2f5;
+}
+
+.setting-group {
+    margin-bottom: 16px;
+}
+
+.setting-header {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    width: 100%;
+    margin-bottom: 4px;
+}
+
+.setting-header label {
+    font-weight: 600;
+    font-size: 0.9em;
+    color: #555;
+    margin-bottom: 0;
+}
+
+/* 全选/清除按钮 - 紧挨在标题下方 */
+.filter-actions {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+
+.filter-actions .filter-btn {
+    padding: 1px 12px;
+    border: 1px solid #ddd;
+    border-radius: 12px;
+    background: #f5f5f5;
+    cursor: pointer;
+    font-size: 0.75em;
+    color: #666;
+    transition: all 0.2s ease;
+    display: inline-block;
+    line-height: 1.8;
+    user-select: none;
+    margin: 0;
+    box-shadow: none;
+}
+
+/* 全选按钮 hover - 绿色 */
+.filter-actions .filter-btn.select-all:hover {
+    background: #28a745;
+    color: #fff;
+    border-color: #28a745;
+}
+
+/* 清除按钮 hover - 红色 */
+.filter-actions .filter-btn.clear-all:hover {
+    background: #dc3545;
+    color: #fff;
+    border-color: #dc3545;
+}
+
+.filter-actions .filter-btn:active {
+    transform: scale(0.95);
+}
+
+.filter-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.team-size-control {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.team-size-control select,
+.team-size-control input {
+    padding: 6px 10px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 0.95em;
+}
+
+.team-size-control input {
+    width: 60px;
+}
+
+.filter-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.tag {
+    padding: 4px 14px;
+    border: 2px solid #e0e0e0;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 0.85em;
+    transition: all 0.2s;
+    user-select: none;
+}
+
+.tag:hover {
+    border-color: #667eea;
+}
+
+.tag.active {
+    background: #667eea;
+    color: #fff;
+    border-color: #667eea;
+}
+
+/* Switch */
+.setting-group .switch-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 4px;
+}
+
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 48px;
+    height: 26px;
+    flex-shrink: 0;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: #ccc;
+    border-radius: 26px;
+    transition: 0.3s;
+}
+
+.slider::before {
+    content: '';
+    position: absolute;
+    height: 20px;
+    width: 20px;
+    left: 3px;
+    bottom: 3px;
+    background: #fff;
+    border-radius: 50%;
+    transition: 0.3s;
+}
+
+.switch input:checked + .slider {
+    background: #667eea;
+}
+
+.switch input:checked + .slider::before {
+    transform: translateX(22px);
+}
+
+.switch-label {
+    font-weight: 500;
+    font-size: 0.95em;
+    user-select: none;
+}
+
+.hint {
+    font-size: 0.8em;
+    color: #999;
+    margin-top: 4px;
+}
+
+.btn-primary {
+    width: 100%;
+    padding: 12px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 1.05em;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.btn-primary:hover {
+    opacity: 0.9;
+}
+
+.btn-secondary {
+    padding: 8px 20px;
+    background: #667eea;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.btn-danger {
+    padding: 8px 20px;
+    background: #e74c3c;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.stage-result {
+    background: #f8f9ff;
+    padding: 16px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+}
+
+.stage-result h3 {
+    font-size: 0.95em;
+    color: #555;
+    margin-bottom: 4px;
+}
+
+#stageDisplay {
+    font-size: 1.3em;
+    font-weight: 600;
+}
+
+/* ===== 编队网格布局 - 2行6列 ===== */
+.team-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 8px;
+    margin-top: 8px;
+    max-width: 100%;
+}
+
+.team-grid .team-card {
+    background: #f8f9ff;
+    padding: 8px 6px;
+    border-radius: 6px;
+    border-left: 3px solid #667eea;
+    text-align: center;
+    font-size: 0.8em;
+    min-height: 70px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.team-card .op-name {
+    font-weight: 600;
+    font-size: 0.9em;
+}
+
+.team-card .op-info {
+    font-size: 0.7em;
+    color: #666;
+}
+
+.team-card .op-skill {
+    font-size: 0.7em;
+    color: #764ba2;
+    margin-top: 2px;
+}
+
+.team-card .exclude-op-btn {
+    margin-top: 4px;
+    font-size: 0.65em;
+    padding: 1px 8px;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    cursor: pointer;
+    background: #fff;
+    transition: all 0.2s;
+}
+
+.team-card .exclude-op-btn:hover {
+    background: #fee;
+    border-color: #e74c3c;
+}
+
+/* 空位卡片 */
+.team-card.empty-slot {
+    background: #f5f5f7;
+    border-left-color: #ccc;
+    color: #bbb;
+    font-size: 0.7em;
+}
+
+.star-emoji {
+    color: #f5a623;
+}
+
+.result-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+}
+
+.exclude-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 16px;
+}
+
+.tab-btn {
+    padding: 8px 20px;
+    border: 1px solid #ddd;
+    background: #f5f5f5;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.tab-btn:first-child {
+    border-radius: 6px 0 0 6px;
+}
+
+.tab-btn:last-child {
+    border-radius: 0 6px 6px 0;
+}
+
+.tab-btn.active {
+    background: #667eea;
+    color: #fff;
+    border-color: #667eea;
+}
+
+.exclude-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.exclude-item {
+    background: #f0f2f5;
+    padding: 4px 12px;
+    border-radius: 16px;
+    font-size: 0.85em;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.exclude-item .remove-btn {
+    cursor: pointer;
+    color: #e74c3c;
+    font-weight: bold;
+}
+
+.exclude-item .remove-btn:hover {
+    color: #c0392b;
+}
+
+.empty-hint {
+    color: #999;
+    font-size: 0.9em;
+}
+
+footer {
+    text-align: center;
+    color: #999;
+    font-size: 0.8em;
+    padding: 20px 0;
+}
+
+/* ===== 响应式 ===== */
+
+/* 平板：改为4列 */
+@media (max-width: 820px) {
+    .team-grid {
+        grid-template-columns: repeat(4, 1fr);
+    }
+}
+
+/* 手机：改为2列 */
+@media (max-width: 540px) {
+    .team-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .filter-actions .filter-btn {
+        padding: 1px 8px;
+        font-size: 0.75em;
+    }
+    
+    .panel {
+        padding: 16px;
+    }
+}
+
+/* ===== 干员头像样式 ===== */
+.avatar-wrapper {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 56px;
+    height: 56px;
+    margin: 0 auto 4px;
+    border-radius: 50%;
+    overflow: hidden;
+    background: #e8ecf1;
+    border: 2px solid #ddd;
+    flex-shrink: 0;
+}
+
+.op-avatar {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.avatar-placeholder {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    height: 100%;
+    font-size: 1.5em;
+    color: #bbb;
+}
+
+/* 卡片内头像区域调整 */
+.team-card {
+    background: #f8f9ff;
+    padding: 8px 6px;
+    border-radius: 6px;
+    border-left: 3px solid #667eea;
+    text-align: center;
+    font-size: 0.8em;
+    min-height: 120px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+/* 空位卡片样式调整 */
+.team-card.empty-slot {
+    background: #f5f5f7;
+    border-left-color: #ccc;
+    color: #bbb;
+    font-size: 0.7em;
+    min-height: 120px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}

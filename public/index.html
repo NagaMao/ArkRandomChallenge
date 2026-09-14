@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>明日方舟 - 随机队伍挑战</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <header>
+            <h1>🎲 随机队伍挑战</h1>
+            <p class="subtitle">明日方舟 · 干员随机关卡生成器</p>
+        </header>
+
+        <main>
+            <!-- 设置面板 -->
+            <section class="panel settings-panel">
+                <h2>⚙️ 随机设置</h2>
+                
+                <div class="setting-group">
+                    <label>队伍人数</label>
+                    <div class="team-size-control">
+                        <select id="sizeMode">
+                            <option value="fixed">固定人数</option>
+                            <option value="range">随机范围</option>
+                        </select>
+                        <div id="fixedSizeGroup">
+                            <input type="number" id="fixedSize" value="4" min="1" max="12">
+                            <span>人</span>
+                        </div>
+                        <div id="rangeSizeGroup" style="display:none;">
+                            <input type="number" id="minSize" value="3" min="1" max="12">
+                            <span>~</span>
+                            <input type="number" id="maxSize" value="6" min="1" max="12">
+                            <span>人</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="setting-group">
+                    <div class="setting-header">
+                        <label for="starFilter">星级筛选</label>
+                    </div>
+                    <div class="filter-actions">
+                        <button class="filter-btn select-all" data-target="star">全选</button>
+                        <button class="filter-btn clear-all" data-target="star">清除</button>
+                    </div>
+                    <div class="filter-tags" id="starFilter">
+                        <span class="tag" data-value="1">⭐</span>
+                        <span class="tag" data-value="2">⭐⭐</span>
+                        <span class="tag" data-value="3">⭐⭐⭐</span>
+                        <span class="tag active" data-value="4">⭐⭐⭐⭐</span>
+                        <span class="tag active" data-value="5">⭐⭐⭐⭐⭐</span>
+                        <span class="tag active" data-value="6">⭐⭐⭐⭐⭐⭐</span>
+                    </div>
+                </div>
+
+                <div class="setting-group">
+                    <div class="setting-header">
+                        <label for="professionFilter">职业筛选</label>
+                    </div>
+                    <div class="filter-actions">
+                        <button class="filter-btn select-all" data-target="profession">全选</button>
+                        <button class="filter-btn clear-all" data-target="profession">清除</button>
+                    </div>
+                    <div class="filter-tags" id="professionFilter">
+                        <span class="tag active" data-value="先锋">先锋</span>
+                        <span class="tag active" data-value="狙击">狙击</span>
+                        <span class="tag active" data-value="术师">术师</span>
+                        <span class="tag active" data-value="近卫">近卫</span>
+                        <span class="tag active" data-value="重装">重装</span>
+                        <span class="tag active" data-value="医疗">医疗</span>
+                        <span class="tag active" data-value="辅助">辅助</span>
+                        <span class="tag active" data-value="特种">特种</span>
+                    </div>
+                </div>
+                <div class="setting-group">
+                    <label>技能随机</label>
+                    <div class="switch-wrapper">
+                        <label class="switch">
+                            <input type="checkbox" id="randomSkill" checked>
+                            <span class="slider"></span>
+                        </label>
+                        <span class="switch-label" id="skillLabel">开启技能随机</span>
+                    </div>
+                    <p class="hint">关闭后，干员默认使用技能1</p>
+                </div>
+
+                <button id="generateBtn" class="btn-primary">🎯 生成随机队伍</button>
+            </section>
+
+            <!-- 结果展示 -->
+            <section class="panel result-panel" id="resultPanel" style="display:none;">
+                <h2>📋 随机结果</h2>
+                
+                <div class="stage-result" id="stageResult">
+                    <h3>🎯 随机关卡</h3>
+                    <div id="stageDisplay">加载中...</div>
+                </div>
+
+                <div class="team-result">
+                    <h3>👥 队伍成员</h3>
+                    <div id="teamDisplay" class="team-grid">
+                        <!-- 动态渲染 -->
+                    </div>
+                </div>
+
+                <div class="result-actions">
+                    <button id="regenerateBtn" class="btn-secondary">🔄 重新生成</button>
+                    <button id="excludeAllBtn" class="btn-danger">🚫 标记排除全部</button>
+                </div>
+            </section>
+
+            <!-- 黑名单管理 -->
+            <section class="panel exclude-panel">
+                <h2>🚫 黑名单管理</h2>
+                <div class="exclude-tabs">
+                    <button class="tab-btn active" data-tab="operators">干员</button>
+                    <button class="tab-btn" data-tab="stages">关卡</button>
+                </div>
+                <div id="excludeContent">
+                    <!-- 动态渲染 -->
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>数据来源：AK-Dataknights · 本地缓存</p>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

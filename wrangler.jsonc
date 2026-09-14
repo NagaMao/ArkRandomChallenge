@@ -1,0 +1,21 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "arkrandomchallenge",
+  "main": "src/worker.py",
+  "compatibility_date": "2026-09-14",
+  "compatibility_flags": ["python_workers"],
+  "assets": {
+    "directory": "./public/",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "kv_namespaces": [
+    {
+      "binding": "DATA_KV",
+      "id": "24b360df48144bb2bd9a7c906bd147a6"
+    }
+  ],
+  "triggers": {
+    "crons": ["0 20 * * *"]
+  }
+}
