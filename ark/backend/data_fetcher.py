@@ -1,5 +1,6 @@
 import json
 import os
+import time
 import requests
 from datetime import datetime
 import urllib3
@@ -7,80 +8,127 @@ import urllib3
 # 禁用 SSL 警告（仅本地测试用）
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# 数据源
-DATA_URLS = {
-    'operators': 'https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/excel/character_table.json',
-    'stages': 'https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/excel/stage_table.json'
+# 数据源。按顺序尝试，前一个失败自动回退到下一个。
+# 优先使用国内的 CDN 镜像（jsDelivr / ghproxy），最后才回退到 GitHub 原始地址。
+DATA_SOURCES = {
+    'operators': [
+        'https://cdn.jsdelivr.net/gh/Kengxxiao/ArknightsGameData@master/zh_CN/gamedata/excel/character_table.json',
+        'https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/excel/character_table.json',
+    ],
+    'stages': [
+        'https://cdn.jsdelivr.net/gh/Kengxxiao/ArknightsGameData@master/zh_CN/gamedata/excel/stage_table.json',
+        'https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/excel/stage_table.json',
+    ],
 }
+
+# 单个数据源的超时（连接, 读取）
+REQUEST_TIMEOUT = (10, 60)
+# 每个数据源的重试次数
+REQUEST_RETRIES = 2
 
 CACHE_DIR = "data_cache"
 os.makedirs(CACHE_DIR, exist_ok=True)
 
-def fetch_operators():
-    """获取干员数据"""
-    cache_file = os.path.join(CACHE_DIR, "operators.json")
-    
-    if os.path.exists(cache_file):
-        print("从缓存加载干员数据...")
-        with open(cache_file, "r", encoding="utf-8") as f:
-            return json.load(f)
-    
-    print("从网络获取干员数据...")
-    url = DATA_URLS['operators']
-    
-    try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-        resp = requests.get(url, headers=headers, verify=False, timeout=30)
-        print(f"状态码: {resp.status_code}")
-        resp.raise_for_status()
-        
-        raw_data = resp.json()
-        operators = parse_operators(raw_data)
-        
-        with open(cache_file, "w", encoding="utf-8") as f:
-            json.dump(operators, f, ensure_ascii=False, indent=2)
-        
-        print(f"成功获取 {len(operators)} 位干员数据")
-        return operators
-        
-    except Exception as e:
-        print(f"错误: {e}")
-        raise
+# 缓存有效期（秒）。24 小时，用于服务启动时判断缓存是否过期
+CACHE_TTL = 24 * 60 * 60
 
-def fetch_stages():
-    """获取关卡数据"""
-    cache_file = os.path.join(CACHE_DIR, "stages.json")
-    
+def _cache_is_fresh(cache_file):
+    """判断缓存文件是否存在且未超过有效期"""
+    if not os.path.exists(cache_file):
+        return False
+    age = time.time() - os.path.getmtime(cache_file)
+    return age < CACHE_TTL
+
+def _load_cache(cache_file):
+    """读取缓存文件，不存在则返回 None"""
     if os.path.exists(cache_file):
-        print("从缓存加载关卡数据...")
         with open(cache_file, "r", encoding="utf-8") as f:
             return json.load(f)
-    
-    print("从网络获取关卡数据...")
-    url = DATA_URLS['stages']
-    
-    try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-        resp = requests.get(url, headers=headers, verify=False, timeout=30)
-        print(f"状态码: {resp.status_code}")
-        resp.raise_for_status()
-        
-        raw_data = resp.json()
-        stages = parse_stages(raw_data)
-        
-        with open(cache_file, "w", encoding="utf-8") as f:
-            json.dump(stages, f, ensure_ascii=False, indent=2)
-        
-        print(f"成功获取 {len(stages)} 个关卡数据")
-        return stages
-        
-    except Exception as e:
-        print(f"错误: {e}")
-        raise
+    return None
+
+def _download(urls, label, parse_func, cache_file):
+    """按顺序尝试多个数据源下载并解析数据，成功后写入缓存。
+
+    Args:
+        urls: 数据源 URL 列表，按优先级排列
+        label: 用于日志的标签（如 "干员"）
+        parse_func: 原始 JSON -> 结果列表 的解析函数
+        cache_file: 缓存文件路径
+
+    Returns:
+        (数据列表, 是否成功)。全部失败时返回 (None, False)。
+    """
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    }
+
+    for url in urls:
+        for attempt in range(1, REQUEST_RETRIES + 1):
+            try:
+                print(f"从网络获取{label}数据 ({url}) 第 {attempt} 次尝试...")
+                resp = requests.get(url, headers=headers, verify=False, timeout=REQUEST_TIMEOUT)
+                resp.raise_for_status()
+
+                raw_data = resp.json()
+                result = parse_func(raw_data)
+
+                with open(cache_file, "w", encoding="utf-8") as f:
+                    json.dump(result, f, ensure_ascii=False, indent=2)
+
+                print(f"成功获取 {len(result)} 条{label}数据")
+                return result, True
+            except Exception as e:
+                print(f"获取{label}数据失败: {e}")
+
+    return None, False
+
+def fetch_operators(force=False):
+    """获取干员数据
+
+    Args:
+        force: True 时忽略缓存，强制从网络刷新
+    """
+    cache_file = os.path.join(CACHE_DIR, "operators.json")
+
+    if not force and _cache_is_fresh(cache_file):
+        print("从缓存加载干员数据...")
+        return _load_cache(cache_file)
+
+    data, ok = _download(DATA_SOURCES['operators'], "干员", parse_operators, cache_file)
+    if ok:
+        return data
+
+    # 网络全部失败：回退到旧缓存（即使已过期）
+    fallback = _load_cache(cache_file)
+    if fallback is not None:
+        print("警告：网络获取干员数据失败，回退使用旧缓存（数据可能不是最新）")
+        return fallback
+
+    raise RuntimeError("无法获取干员数据：网络不可用且本地无缓存")
+
+def fetch_stages(force=False):
+    """获取关卡数据
+
+    Args:
+        force: True 时忽略缓存，强制从网络刷新
+    """
+    cache_file = os.path.join(CACHE_DIR, "stages.json")
+
+    if not force and _cache_is_fresh(cache_file):
+        print("从缓存加载关卡数据...")
+        return _load_cache(cache_file)
+
+    data, ok = _download(DATA_SOURCES['stages'], "关卡", parse_stages, cache_file)
+    if ok:
+        return data
+
+    # 网络全部失败：回退到旧缓存（即使已过期）
+    fallback = _load_cache(cache_file)
+    if fallback is not None:
+        print("警告：网络获取关卡数据失败，回退使用旧缓存（数据可能不是最新）")
+        return fallback
+
+    raise RuntimeError("无法获取关卡数据：网络不可用且本地无缓存")
 
 def parse_operators(raw_data):
     """
@@ -213,7 +261,14 @@ def parse_stages(raw_data):
     return result
 
 def get_data_version():
+    """返回数据版本信息，lastUpdated 取缓存文件的实际更新时间"""
+    op_cache = os.path.join(CACHE_DIR, "operators.json")
+    st_cache = os.path.join(CACHE_DIR, "stages.json")
+
+    mtimes = [os.path.getmtime(p) for p in (op_cache, st_cache) if os.path.exists(p)]
+    last_updated = datetime.fromtimestamp(max(mtimes)).isoformat() if mtimes else None
+
     return {
         "version": "1.0.0",
-        "lastUpdated": datetime.now().isoformat()
+        "lastUpdated": last_updated
     }

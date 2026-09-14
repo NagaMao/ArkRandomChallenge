@@ -14,6 +14,13 @@
     "skills": []
   },
   {
+    "id": "char_4220_kormr",
+    "name": "虎狼丸",
+    "star": 1,
+    "profession": "近卫",
+    "skills": []
+  },
+  {
     "id": "char_376_therex",
     "name": "THRM-EX",
     "star": 1,
@@ -2308,6 +2315,22 @@
     ]
   },
   {
+    "id": "char_4218_aigis",
+    "name": "埃癸斯",
+    "star": 5,
+    "profession": "狙击",
+    "skills": [
+      {
+        "skillId": "sk1",
+        "name": "技能1"
+      },
+      {
+        "skillId": "sk2",
+        "name": "技能2"
+      }
+    ]
+  },
+  {
     "id": "char_002_amiya",
     "name": "阿米娅",
     "star": 5,
@@ -4042,6 +4065,22 @@
   {
     "id": "char_4223_botany",
     "name": "伯塔尼",
+    "star": 5,
+    "profession": "辅助",
+    "skills": [
+      {
+        "skillId": "sk1",
+        "name": "技能1"
+      },
+      {
+        "skillId": "sk2",
+        "name": "技能2"
+      }
+    ]
+  },
+  {
+    "id": "char_4219_yukari",
+    "name": "岳羽由加莉",
     "star": 5,
     "profession": "辅助",
     "skills": [
@@ -5818,6 +5857,26 @@
   {
     "id": "char_1023_ghost2",
     "name": "归溟幽灵鲨",
+    "star": 6,
+    "profession": "特种",
+    "skills": [
+      {
+        "skillId": "sk1",
+        "name": "技能1"
+      },
+      {
+        "skillId": "sk2",
+        "name": "技能2"
+      },
+      {
+        "skillId": "sk3",
+        "name": "技能3"
+      }
+    ]
+  },
+  {
+    "id": "char_4217_makoto",
+    "name": "结城理",
     "star": 6,
     "profession": "特种",
     "skills": [
