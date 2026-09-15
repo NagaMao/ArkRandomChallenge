@@ -255,7 +255,8 @@ function renderResult(data) {
                         />
                         <div class="avatar-placeholder" style="display:none;">🖼️</div>
                     </div>
-                    <div class="op-name">${op.name} <span class="star-emoji">${stars}</span></div>
+                    <div class="op-name">${op.name}</div>
+                    <span class="star-emoji">${stars}</span>
                     <div class="op-info">${op.profession}</div>
                     ${skillName ? `<div class="op-skill">⚡ ${skillName}</div>` : ''}
                     <button class="exclude-op-btn" data-id="${op.id}">🚫 排除</button>
