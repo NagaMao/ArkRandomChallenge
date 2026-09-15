@@ -190,7 +190,6 @@ async function generateTeam() {
 function reorderTeamForVerticalDisplay(team, teamSize) {
     if (teamSize === 0) return [];
     
-    // 从 CSS 变量读取当前布局的列数和行数
     const gridEl = document.getElementById('teamDisplay');
     const style = getComputedStyle(gridEl);
     const cols = parseInt(style.getPropertyValue('--team-cols')) || 6;
@@ -201,15 +200,25 @@ function reorderTeamForVerticalDisplay(team, teamSize) {
     const count = displayTeam.length;
     const result = new Array(totalSlots).fill(null);
     
-    for (let i = 0; i < count; i++) {
-        const colIndex = Math.floor(i / rows);
-        const rowIndex = i % rows;
-        const targetIndex = colIndex + rowIndex * cols;
-        result[targetIndex] = displayTeam[i];
+    // 只有 PC 端（6列2行）用竖列优先，其他布局用行优先
+    if (cols === 6 && rows === 2) {
+        // 竖列优先（保持 PC 端原来的编队显示效果）
+        for (let i = 0; i < count; i++) {
+            const colIndex = Math.floor(i / rows);
+            const rowIndex = i % rows;
+            const targetIndex = colIndex + rowIndex * cols;
+            result[targetIndex] = displayTeam[i];
+        }
+    } else {
+        // 行优先（手机/平板：从左到右依次填充）
+        for (let i = 0; i < count; i++) {
+            result[i] = displayTeam[i];
+        }
     }
     
     return result;
 }
+
 function renderResult(data) {
     resultPanel.style.display = 'block';
     
