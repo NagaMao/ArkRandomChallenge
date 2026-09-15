@@ -134,6 +134,40 @@ header h1 {
 .team-size-control input {
     width: 60px;
 }
+/* 数字输入框：统一 spinner，兼容移动端 */
+.team-size-control input[type="number"] {
+    width: 60px;
+    padding: 6px 4px 6px 10px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 0.95em;
+    text-align: center;
+    /* 恢复默认 spinner，允许点击 */
+    -moz-appearance: number-input;
+    appearance: auto;
+}
+
+/* WebKit 系浏览器（Chrome / Safari / 移动端）的 spinner 按钮 */
+.team-size-control input[type="number"]::-webkit-inner-spin-button,
+.team-size-control input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: inner-spin-button;
+    opacity: 1;           /* 之前可能被隐藏 */
+    height: 28px;
+    cursor: pointer;
+}
+
+/* 移动端：稍微放大，方便点按 */
+@media (max-width: 540px) {
+    .team-size-control input[type="number"] {
+        width: 68px;
+        padding: 8px 4px 8px 8px;
+        font-size: 1em;
+    }
+    .team-size-control input[type="number"]::-webkit-inner-spin-button,
+    .team-size-control input[type="number"]::-webkit-outer-spin-button {
+        height: 34px;
+    }
+}
 
 .filter-tags {
     display: flex;

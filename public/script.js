@@ -385,22 +385,64 @@ async function loadOperators() {
 
 // ===== 人数输入范围限制 =====
 
+// function clampTeamSize(input) {
+//     let val = parseInt(input.value);
+//     if (isNaN(val) || val < 1) {
+//         input.value = 1;
+//     } else if (val > 12) {
+//         input.value = 12;
+//     }
+//     // 联动校验
+//     if (input.id === 'minSize') {
+//         const maxVal = parseInt(maxSize.value) || 6;
+//         if (parseInt(input.value) > maxVal) input.value = maxVal;
+//     } else if (input.id === 'maxSize') {
+//         const minVal = parseInt(minSize.value) || 3;
+//         if (parseInt(input.value) < minVal) input.value = minVal;
+//     }
+// }
+
+// ===== 人数范围限制（仅在失焦时修正，不打断输入） =====
+
 function clampTeamSize(input) {
-    let val = parseInt(input.value);
-    if (isNaN(val) || val < 1) {
-        input.value = 1;
-    } else if (val > 12) {
-        input.value = 12;
+    let raw = input.value.trim();
+    
+    // 空值：回退到默认值
+    if (raw === '') {
+        const fallback = { fixedSize: 4, minSize: 3, maxSize: 6 }[input.id] || 1;
+        input.value = fallback;
+        return;
     }
-    // 联动校验
+    
+    let val = parseInt(raw, 10);
+    if (isNaN(val)) {
+        const fallback = { fixedSize: 4, minSize: 3, maxSize: 6 }[input.id] || 1;
+        input.value = fallback;
+        return;
+    }
+    
+    // 限制 1~12
+    if (val < 1) val = 1;
+    if (val > 12) val = 12;
+    
+    // min / max 联动
     if (input.id === 'minSize') {
-        const maxVal = parseInt(maxSize.value) || 6;
-        if (parseInt(input.value) > maxVal) input.value = maxVal;
+        const maxVal = parseInt(maxSize.value, 10) || 12;
+        if (val > maxVal) val = maxVal;
     } else if (input.id === 'maxSize') {
-        const minVal = parseInt(minSize.value) || 3;
-        if (parseInt(input.value) < minVal) input.value = minVal;
+        const minVal = parseInt(minSize.value, 10) || 1;
+        if (val < minVal) val = minVal;
     }
+    
+    input.value = val;
 }
+
+// 失焦时修正；change 事件兼容键盘上下键 / 步进按钮
+['fixedSize', 'minSize', 'maxSize'].forEach(id => {
+    const el = document.getElementById(id);
+    el.addEventListener('blur', () => clampTeamSize(el));
+    el.addEventListener('change', () => clampTeamSize(el));
+});
 
 // 固定人数
 fixedSize.addEventListener('change', () => clampTeamSize(fixedSize));
