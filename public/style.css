@@ -283,12 +283,31 @@ header h1 {
 }
 
 /* ===== 编队网格布局 - 2行6列 ===== */
+/* 默认：PC 端 6 列 2 行 */
 .team-grid {
+    --team-cols: 6;
+    --team-rows: 2;
     display: grid;
-    grid-template-columns: repeat(6, 1fr);
+    grid-template-columns: repeat(var(--team-cols), 1fr);
     gap: 8px;
     margin-top: 8px;
     max-width: 100%;
+}
+
+/* 平板：4 列 3 行 */
+@media (max-width: 820px) {
+    .team-grid {
+        --team-cols: 4;
+        --team-rows: 3;
+    }
+}
+
+/* 手机：2 列 6 行 */
+@media (max-width: 540px) {
+    .team-grid {
+        --team-cols: 2;
+        --team-rows: 6;
+    }
 }
 
 .team-grid .team-card {

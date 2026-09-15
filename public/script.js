@@ -163,11 +163,38 @@ async function generateTeam() {
 /**
  * 将干员按竖列优先的顺序重新排列
  */
+// function reorderTeamForVerticalDisplay(team, teamSize) {
+//     if (teamSize === 0) return [];
+    
+//     const cols = 6;
+//     const rows = 2;
+//     const totalSlots = cols * rows;
+    
+//     const displayTeam = team.slice(0, totalSlots);
+//     const count = displayTeam.length;
+//     const result = new Array(totalSlots).fill(null);
+    
+//     for (let i = 0; i < count; i++) {
+//         const colIndex = Math.floor(i / rows);
+//         const rowIndex = i % rows;
+//         const targetIndex = colIndex + rowIndex * cols;
+//         result[targetIndex] = displayTeam[i];
+//     }
+    
+//     return result;
+// }
+/**
+ * 将干员按竖列优先的顺序重新排列
+ * 列数/行数从 CSS 变量读取，适配 PC / 平板 / 手机不同布局
+ */
 function reorderTeamForVerticalDisplay(team, teamSize) {
     if (teamSize === 0) return [];
     
-    const cols = 6;
-    const rows = 2;
+    // 从 CSS 变量读取当前布局的列数和行数
+    const gridEl = document.getElementById('teamDisplay');
+    const style = getComputedStyle(gridEl);
+    const cols = parseInt(style.getPropertyValue('--team-cols')) || 6;
+    const rows = parseInt(style.getPropertyValue('--team-rows')) || 2;
     const totalSlots = cols * rows;
     
     const displayTeam = team.slice(0, totalSlots);
@@ -183,7 +210,6 @@ function reorderTeamForVerticalDisplay(team, teamSize) {
     
     return result;
 }
-
 function renderResult(data) {
     resultPanel.style.display = 'block';
     
@@ -197,7 +223,12 @@ function renderResult(data) {
     
     // 队伍 - 2行6列布局，竖列优先填充
     const teamSize = data.team_size || data.team.length;
-    const totalSlots = 12;
+    // const totalSlots = 12;
+    const gridEl = document.getElementById('teamDisplay');
+    const style = getComputedStyle(gridEl);
+    const cols = parseInt(style.getPropertyValue('--team-cols')) || 6;
+    const rows = parseInt(style.getPropertyValue('--team-rows')) || 2;
+    const totalSlots = cols * rows;
     const orderedTeam = reorderTeamForVerticalDisplay(data.team, teamSize);
     
     let html = '';
