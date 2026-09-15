@@ -474,7 +474,14 @@ footer {
     font-size: 0.8em;
     padding: 20px 0;
 }
+footer a {
+    color: #667eea;
+    text-decoration: none;
+}
 
+footer a:hover {
+    text-decoration: underline;
+}
 /* ===== 响应式 ===== */
 
 /* 平板：改为4列 */
