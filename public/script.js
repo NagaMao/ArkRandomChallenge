@@ -405,7 +405,7 @@ async function loadOperators() {
 // ===== 人数范围限制（仅在失焦时修正，不打断输入） =====
 
 function clampTeamSize(input) {
-    let raw = input.value.trim();
+    const raw = input.value.trim();
     
     // 空值：回退到默认值
     if (raw === '') {
@@ -437,11 +437,10 @@ function clampTeamSize(input) {
     input.value = val;
 }
 
-// 失焦时修正；change 事件兼容键盘上下键 / 步进按钮
+// 仅绑定 blur：输入过程中完全不干预，失焦后才修正
 ['fixedSize', 'minSize', 'maxSize'].forEach(id => {
     const el = document.getElementById(id);
     el.addEventListener('blur', () => clampTeamSize(el));
-    el.addEventListener('change', () => clampTeamSize(el));
 });
 
 // 固定人数
