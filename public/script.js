@@ -19,15 +19,8 @@ const teamDisplay = document.getElementById('teamDisplay');
 const stageDisplay = document.getElementById('stageDisplay');
 
 // ===== 图片配置 =====
-// 头像文件名格式：{干员ID}.png，如 char_1013_chen2.png
 const AVATAR_CDN_BASE = 'https://cdn.jsdelivr.net/gh/yuanyan3060/ArknightsGameResource@main/avatar/';
 
-/**
- * 获取干员头像 URL
- * @param {string} name - 干员名称（保留备用）
- * @param {string} id - 干员 ID（如 char_1013_chen2）
- * @returns {string} 头像图片 URL
- */
 function getOperatorAvatarUrl(name, id) {
     return `${AVATAR_CDN_BASE}${id}.png`;
 }
@@ -49,33 +42,33 @@ function getProfessionFilter() {
     return getSelectedTags(container);
 }
 
-function getTeamSize() {
-    const mode = sizeMode.value;
-    if (mode === 'fixed') {
-        return { mode: 'fixed', size: parseInt(fixedSize.value) || 4 };
-    } else {
-        return { 
-            mode: 'range', 
-            min: parseInt(minSize.value) || 3,
-            max: parseInt(maxSize.value) || 6
-        };
-    }
-}
-
 function getRandomSkill() {
     return document.getElementById('randomSkill').checked;
 }
 
+/**
+ * 校验人数输入是否合法（1~12 的纯数字）
+ */
+function validateSizeInput(input) {
+    const raw = input.value.trim();
+    if (!/^\d+$/.test(raw)) {
+        return { ok: false, value: 0 };
+    }
+    const val = parseInt(raw, 10);
+    if (val < 1 || val > 12) {
+        return { ok: false, value: val };
+    }
+    return { ok: true, value: val };
+}
+
 // ===== 标记切换 =====
 
-// 星级/职业标签切换
 document.querySelectorAll('.filter-tags .tag').forEach(tag => {
     tag.addEventListener('click', function() {
         this.classList.toggle('active');
     });
 });
 
-// 全选/清除按钮
 document.querySelectorAll('.filter-btn').forEach(btn => {
     btn.addEventListener('click', function() {
         const target = this.dataset.target;
@@ -121,15 +114,41 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 async function generateTeam() {
     const starFilter = getStarFilter();
     const profFilter = getProfessionFilter();
-    const size = getTeamSize();
     const randomSkill = getRandomSkill();
     
+    // ===== 人数校验 =====
+    const mode = sizeMode.value;
     let teamSize;
-    if (size.mode === 'fixed') {
-        teamSize = size.size;
+    
+    if (mode === 'fixed') {
+        const check = validateSizeInput(fixedSize);
+        if (!check.ok) {
+            alert('队伍人数请输入1~12的数字');
+            fixedSize.focus();
+            return;
+        }
+        teamSize = check.value;
     } else {
-        teamSize = Math.floor(Math.random() * (size.max - size.min + 1)) + size.min;
+        const checkMin = validateSizeInput(minSize);
+        if (!checkMin.ok) {
+            alert('队伍人数请输入1~12的数字');
+            minSize.focus();
+            return;
+        }
+        const checkMax = validateSizeInput(maxSize);
+        if (!checkMax.ok) {
+            alert('队伍人数请输入1~12的数字');
+            maxSize.focus();
+            return;
+        }
+        if (checkMin.value > checkMax.value) {
+            alert('最小人数不能大于最大人数');
+            minSize.focus();
+            return;
+        }
+        teamSize = Math.floor(Math.random() * (checkMax.value - checkMin.value + 1)) + checkMin.value;
     }
+    
     currentTeamSize = teamSize;
     
     try {
@@ -162,30 +181,7 @@ async function generateTeam() {
 
 /**
  * 将干员按竖列优先的顺序重新排列
- */
-// function reorderTeamForVerticalDisplay(team, teamSize) {
-//     if (teamSize === 0) return [];
-    
-//     const cols = 6;
-//     const rows = 2;
-//     const totalSlots = cols * rows;
-    
-//     const displayTeam = team.slice(0, totalSlots);
-//     const count = displayTeam.length;
-//     const result = new Array(totalSlots).fill(null);
-    
-//     for (let i = 0; i < count; i++) {
-//         const colIndex = Math.floor(i / rows);
-//         const rowIndex = i % rows;
-//         const targetIndex = colIndex + rowIndex * cols;
-//         result[targetIndex] = displayTeam[i];
-//     }
-    
-//     return result;
-// }
-/**
- * 将干员按竖列优先的顺序重新排列
- * 列数/行数从 CSS 变量读取，适配 PC / 平板 / 手机不同布局
+ * PC 端（6列2行）用竖列优先，其他布局用行优先
  */
 function reorderTeamForVerticalDisplay(team, teamSize) {
     if (teamSize === 0) return [];
@@ -200,9 +196,8 @@ function reorderTeamForVerticalDisplay(team, teamSize) {
     const count = displayTeam.length;
     const result = new Array(totalSlots).fill(null);
     
-    // 只有 PC 端（6列2行）用竖列优先，其他布局用行优先
     if (cols === 6 && rows === 2) {
-        // 竖列优先（保持 PC 端原来的编队显示效果）
+        // PC 端：竖列优先
         for (let i = 0; i < count; i++) {
             const colIndex = Math.floor(i / rows);
             const rowIndex = i % rows;
@@ -210,7 +205,7 @@ function reorderTeamForVerticalDisplay(team, teamSize) {
             result[targetIndex] = displayTeam[i];
         }
     } else {
-        // 行优先（手机/平板：从左到右依次填充）
+        // 手机/平板：行优先
         for (let i = 0; i < count; i++) {
             result[i] = displayTeam[i];
         }
@@ -230,14 +225,14 @@ function renderResult(data) {
         stageDisplay.textContent = '无可用关卡';
     }
     
-    // 队伍 - 2行6列布局，竖列优先填充
+    // 队伍
     const teamSize = data.team_size || data.team.length;
-    // const totalSlots = 12;
     const gridEl = document.getElementById('teamDisplay');
     const style = getComputedStyle(gridEl);
     const cols = parseInt(style.getPropertyValue('--team-cols')) || 6;
     const rows = parseInt(style.getPropertyValue('--team-rows')) || 2;
     const totalSlots = cols * rows;
+    
     const orderedTeam = reorderTeamForVerticalDisplay(data.team, teamSize);
     
     let html = '';
@@ -260,8 +255,7 @@ function renderResult(data) {
                         />
                         <div class="avatar-placeholder" style="display:none;">🖼️</div>
                     </div>
-                    <div class="op-name">${op.name}</div>
-                    <span class="star-emoji">${stars}</span>
+                    <div class="op-name">${op.name} <span class="star-emoji">${stars}</span></div>
                     <div class="op-info">${op.profession}</div>
                     ${skillName ? `<div class="op-skill">⚡ ${skillName}</div>` : ''}
                     <button class="exclude-op-btn" data-id="${op.id}">🚫 排除</button>
@@ -368,7 +362,7 @@ if (randomSkillCheckbox && skillLabel) {
     });
 }
 
-// ===== 初始化时加载干员数据（用于显示名字） =====
+// ===== 初始化时加载干员数据 =====
 let operatorsData = [];
 
 async function loadOperators() {
@@ -383,73 +377,6 @@ async function loadOperators() {
     }
 }
 
-// ===== 人数范围限制（延迟修正，不打断输入） =====
-
-function clampTeamSize(input) {
-    const raw = input.value.trim();
-    
-    // 空值：回退到默认值
-    if (raw === '') {
-        const fallback = { fixedSize: 4, minSize: 3, maxSize: 6 }[input.id] || 1;
-        input.value = fallback;
-        return;
-    }
-    
-    let val = parseInt(raw, 10);
-    if (isNaN(val)) {
-        const fallback = { fixedSize: 4, minSize: 3, maxSize: 6 }[input.id] || 1;
-        input.value = fallback;
-        return;
-    }
-    
-    // 限制 1~12
-    if (val < 1) val = 1;
-    if (val > 12) val = 12;
-    
-    // min / max 联动
-    if (input.id === 'minSize') {
-        const maxVal = parseInt(maxSize.value, 10) || 12;
-        if (val > maxVal) val = maxVal;
-    } else if (input.id === 'maxSize') {
-        const minVal = parseInt(minSize.value, 10) || 1;
-        if (val < minVal) val = minVal;
-    }
-    
-    input.value = val;
-}
-
-// 每个输入框一个定时器
-const clampTimers = {};
-
-['fixedSize', 'minSize', 'maxSize'].forEach(id => {
-    const el = document.getElementById(id);
-    
-    // 输入时：清掉旧定时器，延迟 800ms 后修正
-    el.addEventListener('input', () => {
-        clearTimeout(clampTimers[id]);
-        clampTimers[id] = setTimeout(() => {
-            clampTeamSize(el);
-        }, 800);
-    });
-    
-    // 失焦时：立即修正（兜底）
-    el.addEventListener('blur', () => {
-        clearTimeout(clampTimers[id]);
-        clampTeamSize(el);
-    });
-});
-
-// 固定人数
-fixedSize.addEventListener('change', () => clampTeamSize(fixedSize));
-fixedSize.addEventListener('input', () => clampTeamSize(fixedSize));
-
-// 最小人数
-minSize.addEventListener('change', () => clampTeamSize(minSize));
-minSize.addEventListener('input', () => clampTeamSize(minSize));
-
-// 最大人数
-maxSize.addEventListener('change', () => clampTeamSize(maxSize));
-maxSize.addEventListener('input', () => clampTeamSize(maxSize));
 // ===== 事件绑定 =====
 
 generateBtn.addEventListener('click', generateTeam);
