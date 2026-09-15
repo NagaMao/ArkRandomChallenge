@@ -319,7 +319,7 @@ function renderResult(data) {
         btn.addEventListener('click', function() {
             const id = this.dataset.id;
             const name = currentResult.team.find(op => op.id === id)?.name || id;
-            if (confirm(`确定排除 ${name} 吗？`)) {
+            if (confirm(`确定排除 ${name} 吗？排除后需要重新生成结果。`)) {
                 updateExclude('operator', id, 'add');
             }
         });
