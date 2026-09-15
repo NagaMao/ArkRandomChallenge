@@ -25,6 +25,45 @@ function getOperatorAvatarUrl(name, id) {
     return `${AVATAR_CDN_BASE}${id}.png`;
 }
 
+// ===== 黑名单（localStorage 本地存储） =====
+
+const EXCLUDE_KEY = 'arknights_exclude';
+
+function loadExcludeLocal() {
+    try {
+        const raw = localStorage.getItem(EXCLUDE_KEY);
+        if (raw) {
+            const data = JSON.parse(raw);
+            currentExclude = {
+                operators: data.operators || [],
+                stages: data.stages || []
+            };
+        } else {
+            currentExclude = { operators: [], stages: [] };
+        }
+    } catch (e) {
+        currentExclude = { operators: [], stages: [] };
+    }
+    renderExclude('operators');
+}
+
+function saveExcludeLocal() {
+    localStorage.setItem(EXCLUDE_KEY, JSON.stringify(currentExclude));
+}
+
+function updateExclude(type, id, action) {
+    const key = type === 'operator' ? 'operators' : 'stages';
+    if (action === 'add') {
+        if (!currentExclude[key].includes(id)) {
+            currentExclude[key].push(id);
+        }
+    } else if (action === 'remove') {
+        currentExclude[key] = currentExclude[key].filter(x => x !== id);
+    }
+    saveExcludeLocal();
+    renderExclude('operators');
+}
+
 // ===== 工具函数 =====
 
 function getSelectedTags(container) {
@@ -151,6 +190,7 @@ async function generateTeam() {
     
     currentTeamSize = teamSize;
     
+    // 把本地黑名单一起发给后端
     try {
         const resp = await fetch(`${API_BASE}/random-team`, {
             method: 'POST',
@@ -159,7 +199,8 @@ async function generateTeam() {
                 teamSize,
                 stars: starFilter,
                 professions: profFilter,
-                randomSkill
+                randomSkill,
+                exclude: currentExclude
             })
         });
         
@@ -287,36 +328,6 @@ function renderResult(data) {
     resultPanel.scrollIntoView({ behavior: 'smooth' });
 }
 
-async function updateExclude(type, id, action) {
-    try {
-        const resp = await fetch(`${API_BASE}/exclude`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ type, id, action })
-        });
-        const result = await resp.json();
-        if (result.code === 0) {
-            currentExclude = result.data;
-            renderExclude('operators');
-        }
-    } catch (err) {
-        console.error(err);
-    }
-}
-
-async function loadExclude() {
-    try {
-        const resp = await fetch(`${API_BASE}/exclude/list`);
-        const result = await resp.json();
-        if (result.code === 0) {
-            currentExclude = result.data;
-            renderExclude('operators');
-        }
-    } catch (err) {
-        console.error(err);
-    }
-}
-
 function renderExclude(tab = 'operators') {
     const container = document.getElementById('excludeContent');
     const list = currentExclude[tab] || [];
@@ -372,6 +383,8 @@ async function loadOperators() {
         const result = await resp.json();
         if (result.code === 0) {
             operatorsData = result.data;
+            // 干员数据加载完成后，重新渲染黑名单以显示正确名字
+            renderExclude('operators');
         }
     } catch (err) {
         console.error('加载干员数据失败', err);
@@ -390,14 +403,13 @@ document.getElementById('excludeAllBtn').addEventListener('click', function() {
         teamIds.forEach(id => {
             updateExclude('operator', id, 'add');
         });
-        setTimeout(() => loadExclude(), 500);
     }
 });
 
 // ===== 启动 =====
 
 loadOperators();
-loadExclude();
+loadExcludeLocal();
 
 console.log('🎲 明日方舟随机队伍工具已启动！');
 console.log('后端 API:', API_BASE);

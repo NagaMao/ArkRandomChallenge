@@ -126,11 +126,11 @@ def random_team():
     stars = data.get("stars", [1, 2, 3, 4, 5, 6])
     professions = data.get("professions", [])
     random_skill = data.get("randomSkill", True)
-    
-    exclude = load_exclude()
+    # 从前端接收黑名单
+    exclude = data.get("exclude", {"operators": [], "stages": []})
     
     # 获取可用干员
-    available = [op for op in operators_data if op["id"] not in exclude["operators"]]
+    available = [op for op in operators_data if op["id"] not in exclude.get("operators", [])]
     
     # 星级筛选
     if stars:
@@ -153,15 +153,13 @@ def random_team():
     # 处理技能
     for op in selected:
         if random_skill and op["skills"]:
-            # 按实际技能数量随机
             skill_idx = random.randint(0, len(op["skills"]) - 1)
             op["selected_skill"] = op["skills"][skill_idx]
         else:
-            # 默认选第一个技能（但前端不显示）
             op["selected_skill"] = op["skills"][0] if op["skills"] else None
     
-    # 随机关卡
-    available_stages = [s for s in stages_data if s["id"] not in exclude["stages"]]
+    # 随机关卡（也排除前端传来的黑名单）
+    available_stages = [s for s in stages_data if s["id"] not in exclude.get("stages", [])]
     if not available_stages:
         return jsonify({
             "code": 1,
