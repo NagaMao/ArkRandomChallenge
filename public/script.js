@@ -383,26 +383,7 @@ async function loadOperators() {
     }
 }
 
-// ===== 人数输入范围限制 =====
-
-// function clampTeamSize(input) {
-//     let val = parseInt(input.value);
-//     if (isNaN(val) || val < 1) {
-//         input.value = 1;
-//     } else if (val > 12) {
-//         input.value = 12;
-//     }
-//     // 联动校验
-//     if (input.id === 'minSize') {
-//         const maxVal = parseInt(maxSize.value) || 6;
-//         if (parseInt(input.value) > maxVal) input.value = maxVal;
-//     } else if (input.id === 'maxSize') {
-//         const minVal = parseInt(minSize.value) || 3;
-//         if (parseInt(input.value) < minVal) input.value = minVal;
-//     }
-// }
-
-// ===== 人数范围限制（仅在失焦时修正，不打断输入） =====
+// ===== 人数范围限制（延迟修正，不打断输入） =====
 
 function clampTeamSize(input) {
     const raw = input.value.trim();
@@ -437,10 +418,25 @@ function clampTeamSize(input) {
     input.value = val;
 }
 
-// 仅绑定 blur：输入过程中完全不干预，失焦后才修正
+// 每个输入框一个定时器
+const clampTimers = {};
+
 ['fixedSize', 'minSize', 'maxSize'].forEach(id => {
     const el = document.getElementById(id);
-    el.addEventListener('blur', () => clampTeamSize(el));
+    
+    // 输入时：清掉旧定时器，延迟 800ms 后修正
+    el.addEventListener('input', () => {
+        clearTimeout(clampTimers[id]);
+        clampTimers[id] = setTimeout(() => {
+            clampTeamSize(el);
+        }, 800);
+    });
+    
+    // 失焦时：立即修正（兜底）
+    el.addEventListener('blur', () => {
+        clearTimeout(clampTimers[id]);
+        clampTeamSize(el);
+    });
 });
 
 // 固定人数
