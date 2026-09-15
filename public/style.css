@@ -463,6 +463,37 @@ header h1 {
     color: #c0392b;
 }
 
+.exclude-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.exclude-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 0;
+}
+
+.btn-clear-exclude {
+    padding: 6px 14px;
+    background: #fff;
+    color: #e74c3c;
+    border: 1px solid #e74c3c;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85em;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.btn-clear-exclude:hover {
+    background: #e74c3c;
+    color: #fff;
+}
 .empty-hint {
     color: #999;
     font-size: 0.9em;

@@ -64,6 +64,12 @@ function updateExclude(type, id, action) {
     renderExclude('operators');
 }
 
+function clearAllExclude() {
+    if (!confirm('确定清空所有黑名单吗？')) return;
+    currentExclude = { operators: [], stages: [] };
+    saveExcludeLocal();
+    renderExclude('operators');
+}
 // ===== 工具函数 =====
 
 function getSelectedTags(container) {
@@ -405,6 +411,7 @@ document.getElementById('excludeAllBtn').addEventListener('click', function() {
         });
     }
 });
+document.getElementById('clearExcludeBtn').addEventListener('click', clearAllExclude);
 
 // ===== 启动 =====
 
