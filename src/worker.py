@@ -2,43 +2,49 @@ from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 from pyodide.ffi import run_sync
 from workers import wsgi
-import os
 import json
 import random
 from datetime import datetime, timezone
 from data_fetcher import fetch_operators, fetch_stages, get_data_version
 
 # ===== 配置开关 =====
-# True  = 方式A（每日定时）+ 方式B（部署时）同时启用
-# False = 只启用方式A（每日定时）更新
-# 可用 Worker 环境变量 ENABLE_DEPLOY_REFRESH 覆盖（"true"/"1"/"yes"/"on" 视为开启）
+# 方式A（每日定时）始终启用；
+# 方式B（部署时刷新）由 Worker 环境变量 ENABLE_DEPLOY_REFRESH 控制：
+#   "true"/"1"/"yes"/"on"  → 方式A + 方式B 同时启用
+#   "false"/"0"/"no"/"off" → 只启用方式A
+# 可通过 wrangler.jsonc 的 vars 或 `wrangler secret put` 配置。
 ENABLE_DEPLOY_REFRESH_DEFAULT = True
 
-# 部署时刷新接口（方式B）的鉴权 token。
-# 通过 `wrangler secret put REFRESH_TOKEN` 配置；未配置时接口拒绝所有请求，避免被公开滥用。
-REFRESH_TOKEN = os.environ.get("REFRESH_TOKEN") or None
+
+def _env_str(env, name):
+    """从 Worker env 读取字符串变量。
+
+    Cloudflare Python Workers 的 vars / secrets 都通过 env 对象暴露
+    （而不是 Python 的 os.environ）。未设置时返回 None。
+    """
+    try:
+        raw = getattr(env, name, None)
+    except Exception:
+        return None
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if text in ("", "undefined", "null"):
+        return None
+    return text
 
 
 def _deploy_refresh_enabled(env):
-    """读取部署时刷新开关。
-
-    - env.ENABLE_DEPLOY_REFRESH（Worker 环境变量）优先于代码默认值；
-    - 环境变量未设置（JS undefined/null）时回退到 ENABLE_DEPLOY_REFRESH_DEFAULT。
-    """
-    try:
-        raw = getattr(env, "ENABLE_DEPLOY_REFRESH", None)
-    except Exception:
-        raw = None
-
-    # 未设置：getattr 可能抛错、返回 None，或返回 JS 的 undefined（字符串表现为 "undefined"）
-    if raw is None:
+    """读取部署时刷新开关（方式B）。未配置时回退到默认值。"""
+    text = _env_str(env, "ENABLE_DEPLOY_REFRESH")
+    if text is None:
         return ENABLE_DEPLOY_REFRESH_DEFAULT
+    return text.lower() in ("1", "true", "yes", "on")
 
-    text = str(raw).strip().lower()
-    if text in ("", "undefined", "null", "none"):
-        return ENABLE_DEPLOY_REFRESH_DEFAULT
 
-    return text in ("1", "true", "yes", "on")
+def _get_refresh_token(env):
+    """读取方式B的鉴权 token。未配置返回 None（表示不校验）。"""
+    return _env_str(env, "REFRESH_TOKEN")
 
 
 app = Flask(__name__)
@@ -328,12 +334,13 @@ class Default(_WsgiDefault):
                 headers={"content-type": "application/json; charset=utf-8"},
             )
 
-        # 鉴权：从查询参数或请求头取 token
+        # 鉴权：从请求头或查询参数取 token
+        expected = _get_refresh_token(env)
         provided = None
         try:
-            token = REFRESH_TOKEN
-            provided = getattr(request, "headers", None)
-            provided = provided.get("X-Refresh-Token") if provided else None
+            headers = getattr(request, "headers", None)
+            if headers is not None:
+                provided = headers.get("X-Refresh-Token")
             if not provided:
                 url = getattr(request, "url", "") or ""
                 from urllib.parse import urlsplit, parse_qs
@@ -342,7 +349,8 @@ class Default(_WsgiDefault):
         except Exception as e:  # noqa: BLE001
             print(f"[refresh] 解析 token 失败：{e}")
 
-        if not REFRESH_TOKEN or provided != REFRESH_TOKEN:
+        # 只有配置了 token 时才校验；未配置则允许（刷新仅拉取公开数据，无敏感信息）
+        if expected and provided != expected:
             return Response.new(
                 json.dumps({"code": 403, "msg": "无权访问：token 缺失或不正确"},
                            ensure_ascii=False),
