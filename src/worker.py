@@ -241,42 +241,8 @@ def version():
     env = request.environ["workers.env"]
     return jsonify(get_data_version(env))
 
-@app.route("/api/refresh", methods=["POST"])
-def refresh():
-    """方式B：部署时刷新数据。
-
-    仅在 ENABLE_DEPLOY_REFRESH 为 True 时可用；否则返回 404。
-    需要携带正确 token（环境变量 REFRESH_TOKEN），可通过
-    `?token=xxx` 查询参数或 `X-Refresh-Token` 请求头提供。
-    """
-    env = request.environ["workers.env"]
-
-    if not _deploy_refresh_enabled(env):
-        return jsonify({
-            "code": 404,
-            "msg": "部署时刷新已关闭（ENABLE_DEPLOY_REFRESH=false）"
-        }), 404
-
-    # 鉴权：未配置 token 或 token 不匹配均拒绝
-    provided = request.args.get("token") or request.headers.get("X-Refresh-Token")
-    if not REFRESH_TOKEN or provided != REFRESH_TOKEN:
-        return jsonify({
-            "code": 403,
-            "msg": "无权访问：token 缺失或不正确"
-        }), 403
-
-    try:
-        result = run_sync(refresh_data(env))
-        return jsonify({
-            "code": 0,
-            "msg": "刷新成功",
-            "data": result
-        })
-    except Exception as e:
-        return jsonify({
-            "code": 1,
-            "msg": f"刷新失败：{e}"
-        }), 500
+# 注意：/api/refresh（方式B）由 Default.fetch 直接拦截处理，
+# 不经过 Flask，以确保刷新在真正的异步上下文中执行。
 
 # ===== 错误处理 =====
 
@@ -295,18 +261,20 @@ def server_error(e):
     }), 500
 
 
-# ===== Worker 入口 =====
+# ===== 数据刷新 =====
 
 async def refresh_data(env):
     """强制从网络刷新干员与关卡数据并写入 KV。
 
     返回数据条数统计。任一步失败时抛出异常（调用方保留旧数据）。
+    注意：本函数必须在真正的异步上下文（fetch / scheduled handler）中 await，
+    不要放在 Flask 的同步视图里用 run_sync 调用。
     """
     print("[刷新] 开始刷新干员与关卡数据...")
     new_operators = await fetch_operators(env, force=True)
     new_stages = await fetch_stages(env, force=True)
 
-    if new_operators is None or new_stages is None:
+    if not new_operators or not new_stages:
         raise RuntimeError("数据源返回空结果")
 
     await env.DATA_KV.put("operators", json.dumps(new_operators, ensure_ascii=False))
@@ -328,7 +296,75 @@ _WsgiDefault = wsgi.entrypoint(app)
 
 
 class Default(_WsgiDefault):
-    """Worker 入口类：处理 HTTP 请求（fetch）与定时任务（scheduled）。"""
+    """Worker 入口类：处理 HTTP 请求（fetch）与定时任务（scheduled）。
+
+    - fetch：拦截 POST /api/refresh（方式B），其余请求交给 Flask(WSGI) 处理。
+    - scheduled：每日定时刷新（方式A）。
+    """
+
+    async def fetch(self, request, *args, **kwargs):
+        # 在真正的异步上下文里处理刷新接口，避免在 Flask 同步栈中用 run_sync 嵌套 KV 操作
+        try:
+            url = getattr(request, "url", "") or ""
+            method = str(getattr(request, "method", "") or "").upper()
+            if "/api/refresh" in url and method in ("POST", "GET"):
+                return await self._handle_refresh(request)
+        except Exception as e:  # noqa: BLE001
+            print(f"[refresh] 判断请求失败，交给 WSGI 处理：{e}")
+
+        return await super().fetch(request, *args, **kwargs)
+
+    async def _handle_refresh(self, request):
+        from js import Response
+
+        env = self.env
+        print(f"[refresh] 收到刷新请求：{getattr(request, 'url', '')}")
+
+        if not _deploy_refresh_enabled(env):
+            return Response.new(
+                json.dumps({"code": 404, "msg": "部署时刷新已关闭（ENABLE_DEPLOY_REFRESH=false）"},
+                           ensure_ascii=False),
+                status=404,
+                headers={"content-type": "application/json; charset=utf-8"},
+            )
+
+        # 鉴权：从查询参数或请求头取 token
+        provided = None
+        try:
+            token = REFRESH_TOKEN
+            provided = getattr(request, "headers", None)
+            provided = provided.get("X-Refresh-Token") if provided else None
+            if not provided:
+                url = getattr(request, "url", "") or ""
+                from urllib.parse import urlsplit, parse_qs
+                qs = parse_qs(urlsplit(url).query)
+                provided = (qs.get("token") or [None])[0]
+        except Exception as e:  # noqa: BLE001
+            print(f"[refresh] 解析 token 失败：{e}")
+
+        if not REFRESH_TOKEN or provided != REFRESH_TOKEN:
+            return Response.new(
+                json.dumps({"code": 403, "msg": "无权访问：token 缺失或不正确"},
+                           ensure_ascii=False),
+                status=403,
+                headers={"content-type": "application/json; charset=utf-8"},
+            )
+
+        try:
+            stats = await refresh_data(env)
+            body = json.dumps({"code": 0, "msg": "刷新成功", "data": stats}, ensure_ascii=False)
+            return Response.new(
+                body,
+                status=200,
+                headers={"content-type": "application/json; charset=utf-8"},
+            )
+        except Exception as e:  # noqa: BLE001
+            print(f"[refresh] 刷新失败：{e}")
+            return Response.new(
+                json.dumps({"code": 1, "msg": f"刷新失败：{e}"}, ensure_ascii=False),
+                status=500,
+                headers={"content-type": "application/json; charset=utf-8"},
+            )
 
     async def scheduled(self, controller, env, ctx):
         """方式A：每日 04:00（北京时间 = UTC 20:00）刷新数据。
