@@ -1,6 +1,0 @@
-ERROR    Error running command: uv.EXE venv                                    
-         D:\VSCode\ArkRandomChallenge\.venv-workers\pyodide-venv --python      
-         cpython-3.14.2-emscripten-wasm32-musl                                 
-         Exit code: 2                                                          
-         Output:                                                               
-                                                                               
