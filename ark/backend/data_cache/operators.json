@@ -3791,6 +3791,22 @@
     ]
   },
   {
+    "id": "char_393_toledo",
+    "name": "德·托莱多",
+    "star": 5,
+    "profession": "辅助",
+    "skills": [
+      {
+        "skillId": "sk1",
+        "name": "技能1"
+      },
+      {
+        "skillId": "sk2",
+        "name": "技能2"
+      }
+    ]
+  },
+  {
     "id": "char_195_glassb",
     "name": "真理",
     "star": 5,
@@ -4305,6 +4321,22 @@
   {
     "id": "char_4151_tinman",
     "name": "锡人",
+    "star": 5,
+    "profession": "特种",
+    "skills": [
+      {
+        "skillId": "sk1",
+        "name": "技能1"
+      },
+      {
+        "skillId": "sk2",
+        "name": "技能2"
+      }
+    ]
+  },
+  {
+    "id": "char_4232_hbound",
+    "name": "旅骨",
     "star": 5,
     "profession": "特种",
     "skills": [
@@ -7037,6 +7069,26 @@
   {
     "id": "char_1043_leizi2",
     "name": "司霆惊蛰",
+    "star": 6,
+    "profession": "近卫",
+    "skills": [
+      {
+        "skillId": "sk1",
+        "name": "技能1"
+      },
+      {
+        "skillId": "sk2",
+        "name": "技能2"
+      },
+      {
+        "skillId": "sk3",
+        "name": "技能3"
+      }
+    ]
+  },
+  {
+    "id": "char_4231_clemnt",
+    "name": "克莱门莎",
     "star": 6,
     "profession": "近卫",
     "skills": [

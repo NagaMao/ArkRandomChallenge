@@ -7,6 +7,7 @@ import threading
 from apscheduler.schedulers.background import BackgroundScheduler
 import pytz
 from data_fetcher import fetch_operators, fetch_stages, get_data_version
+import skland
 import urllib3
 
 # 禁用 SSL 警告
@@ -84,12 +85,19 @@ def get_operators():
     """获取干员列表，支持筛选"""
     stars_param = request.args.get("stars", "")
     professions_param = request.args.get("professions", "")
+    owned_param = request.args.get("owned", "")  # 逗号分隔的玩家拥有干员 id
     exclude = load_exclude()
     
     result = operators_data
     
     # 过滤黑名单
     result = [op for op in result if op["id"] not in exclude["operators"]]
+    
+    # 登录状态：只保留玩家拥有的干员
+    if owned_param:
+        owned_set = set(o for o in owned_param.split(",") if o)
+        if owned_set:
+            result = [op for op in result if op["id"] in owned_set]
     
     # 星级筛选
     if stars_param:
@@ -128,9 +136,16 @@ def random_team():
     random_skill = data.get("randomSkill", True)
     # 从前端接收黑名单
     exclude = data.get("exclude", {"operators": [], "stages": []})
+    # 玩家拥有的干员 id 列表（登录后由前端传入；为空/不传表示未登录）
+    owned_ids = data.get("ownedIds") or None
     
     # 获取可用干员
     available = [op for op in operators_data if op["id"] not in exclude.get("operators", [])]
+    
+    # 登录状态：随机池限制为「玩家拥有干员」（与后续筛选取交集）
+    if owned_ids:
+        owned_set = set(owned_ids)
+        available = [op for op in available if op["id"] in owned_set]
     
     # 星级筛选
     if stars:
@@ -226,6 +241,110 @@ def get_exclude():
 def version():
     """获取数据版本"""
     return jsonify(get_data_version())
+
+# ===== 森空岛登录与玩家数据接口 =====
+# 说明：所有凭证（cred）均由前端 localStorage 保存，
+# 后端只在单次请求内使用，不落盘、不记录日志，降低泄露风险。
+
+@app.route("/api/skland/login/password", methods=["POST"])
+def skland_login_password():
+    """手机号 + 密码登录，返回森空岛 cred。"""
+    data = request.json or {}
+    phone = (data.get("phone") or "").strip()
+    password = data.get("password") or ""
+    if not phone or not password:
+        return jsonify({"code": 1, "msg": "请填写手机号和密码"})
+
+    try:
+        token = skland.login_by_password(phone, password)
+        cred_info = skland.get_cred_by_token(token)
+    except skland.SklandError as e:
+        return jsonify({"code": 1, "msg": e.message})
+
+    return jsonify({"code": 0, "data": {
+        "cred": cred_info["cred"],
+        "token": cred_info["token"],
+    }})
+
+
+@app.route("/api/skland/login/send-code", methods=["POST"])
+def skland_send_code():
+    """发送手机验证码。"""
+    data = request.json or {}
+    phone = (data.get("phone") or "").strip()
+    if not phone:
+        return jsonify({"code": 1, "msg": "请填写手机号"})
+
+    try:
+        skland.send_phone_code(phone)
+    except skland.SklandError as e:
+        return jsonify({"code": 1, "msg": e.message})
+
+    return jsonify({"code": 0, "msg": "验证码已发送"})
+
+
+@app.route("/api/skland/login/code", methods=["POST"])
+def skland_login_code():
+    """手机号 + 验证码登录，返回森空岛 cred。"""
+    data = request.json or {}
+    phone = (data.get("phone") or "").strip()
+    code = (data.get("code") or "").strip()
+    if not phone or not code:
+        return jsonify({"code": 1, "msg": "请填写手机号和验证码"})
+
+    try:
+        token = skland.login_by_phone_code(phone, code)
+        cred_info = skland.get_cred_by_token(token)
+    except skland.SklandError as e:
+        return jsonify({"code": 1, "msg": e.message})
+
+    return jsonify({"code": 0, "data": {
+        "cred": cred_info["cred"],
+        "token": cred_info["token"],
+    }})
+
+
+@app.route("/api/skland/bindings", methods=["POST"])
+def skland_bindings():
+    """用 cred + token 获取玩家绑定的游戏角色列表。"""
+    data = request.json or {}
+    cred = (data.get("cred") or "").strip()
+    cred_token = (data.get("token") or "").strip()
+    if not cred or not cred_token:
+        return jsonify({"code": 1, "msg": "缺少凭证，请先登录"})
+
+    try:
+        bindings = skland.get_binding_list(cred, cred_token)
+    except skland.SklandError as e:
+        return jsonify({"code": 1, "msg": e.message})
+
+    # 只保留明日方舟（arknights）的角色
+    arknights = next(
+        (b for b in bindings if b.get("appCode") == "arknights"),
+        None,
+    )
+    characters = arknights.get("bindingList", []) if arknights else []
+    return jsonify({"code": 0, "data": {"characters": characters}})
+
+
+@app.route("/api/skland/players", methods=["POST"])
+def skland_players():
+    """用 cred + token + uid 获取玩家拥有的干员 id 列表。"""
+    data = request.json or {}
+    cred = (data.get("cred") or "").strip()
+    cred_token = (data.get("token") or "").strip()
+    uid = str(data.get("uid") or "").strip()
+    if not cred or not cred_token:
+        return jsonify({"code": 1, "msg": "缺少凭证，请先登录"})
+    if not uid:
+        return jsonify({"code": 1, "msg": "缺少 uid"})
+
+    try:
+        owned = skland.get_owned_char_ids(cred, cred_token, uid)
+    except skland.SklandError as e:
+        return jsonify({"code": 1, "msg": e.message})
+
+    return jsonify({"code": 0, "data": {"ownedIds": sorted(owned)}})
 
 # ===== 错误处理 =====
 @app.errorhandler(404)

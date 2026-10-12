@@ -20,18 +20,98 @@ const stageDisplay = document.getElementById('stageDisplay');
 
 // ===== 图片配置 =====
 // 头像文件名格式：{干员ID}.png，如 char_1013_chen2.png
-const AVATAR_CDN_BASE = 'https://cdn.jsdelivr.net/gh/yuanyan3060/ArknightsGameResource@main/avatar/';
+// 采用「多源降级」：主源加载失败时依次尝试备用源，全部失败才显示占位符。
+// 因为 cdn.jsdelivr.net 在部分网络下会间歇性连接重置，单一 CDN 不够可靠。
+const AVATAR_SOURCES = [
+    // jsDelivr 的多个节点（fastly / gcore 在国内通常比默认节点稳定）
+    'https://fastly.jsdelivr.net/gh/yuanyan3060/ArknightsGameResource@main/avatar/',
+    'https://gcore.jsdelivr.net/gh/yuanyan3060/ArknightsGameResource@main/avatar/',
+    'https://cdn.jsdelivr.net/gh/yuanyan3060/ArknightsGameResource@main/avatar/',
+    // GitHub 直连（部分网络可用）
+    'https://raw.githubusercontent.com/yuanyan3060/ArknightsGameResource/main/avatar/',
+    // GitHub 代理（兜底）
+    'https://gh-proxy.com/https://raw.githubusercontent.com/yuanyan3060/ArknightsGameResource/main/avatar/',
+];
+
+// 兼容旧引用（日志用）
+const AVATAR_CDN_BASE = AVATAR_SOURCES[0];
 
 /**
- * 获取干员头像 URL
+ * 获取干员头像的主 URL（第一个候选源）
  * @param {string} name - 干员名称（保留备用）
  * @param {string} id - 干员 ID（如 char_1013_chen2）
  * @returns {string} 头像图片 URL
  */
 function getOperatorAvatarUrl(name, id) {
-    return `${AVATAR_CDN_BASE}${id}.png`;
+    return `${AVATAR_SOURCES[0]}${id}.png`;
 }
 
+/**
+ * 生成带头像多源降级的 <img> 标签 HTML。
+ *
+ * 原理：给 img 绑定 onerror，加载失败时按 data-sources 里的候选源依次重试，
+ * 全部失败才隐藏 img 并显示占位符。使用内联 onerror 是因为图片是 innerHTML 插入的，
+ * 无法单独 addEventListener。
+ *
+ * @param {string} id - 干员 ID
+ * @param {string} name - 干员名称（用于 alt）
+ * @param {string} extraClass - 附加到 img 的 class（可选）
+ * @returns {string} <img> + 占位符 的 HTML 片段
+ */
+function buildAvatarHtml(id, name, extraClass = '') {
+    const sources = AVATAR_SOURCES.map(base => `${base}${id}.png`);
+    // 用 JSON 字符串塞进 data-sources，onerror 里按索引换源
+    const sourcesAttr = JSON.stringify(sources).replace(/"/g, '&quot;');
+    const cls = extraClass ? `op-avatar ${extraClass}` : 'op-avatar';
+    return `
+        <img
+            src="${sources[0]}"
+            alt="${name}"
+            class="${cls}"
+            loading="lazy"
+            data-sources="${sourcesAttr}"
+            data-idx="0"
+            onerror="window.__avatarFallback && window.__avatarFallback(this)"
+        />
+                <div class="avatar-placeholder" style="display:none;">🖼️</div>
+    `;
+}
+
+/**
+ * 头像加载失败时的降级处理：按 data-sources 里的下一个候选源重试，
+ * 全部失败后隐藏图片、显示占位符。
+ */
+window.__avatarFallback = function (img) {
+    try {
+        const sources = JSON.parse(img.dataset.sources || '[]');
+        let idx = parseInt(img.dataset.idx || '0', 10);
+        idx += 1;
+        if (idx < sources.length) {
+            img.dataset.idx = String(idx);
+            img.src = sources[idx];
+        } else {
+            // 所有源都失败
+            img.style.display = 'none';
+            const ph = img.nextElementSibling;
+            if (ph && ph.classList.contains('avatar-placeholder')) {
+                ph.style.display = 'flex';
+            }
+        }
+    } catch (e) {
+        img.style.display = 'none';
+        const ph = img.nextElementSibling;
+        if (ph && ph.classList.contains('avatar-placeholder')) {
+            ph.style.display = 'flex';
+        }
+    }
+};
+
+function clearAllExclude() {
+    if (!confirm('确定清空所有黑名单吗？')) return;
+    currentExclude = { operators: [], stages: [] };
+    saveExcludeLocal();
+    renderExclude('operators');
+}
 // ===== 工具函数 =====
 
 function getSelectedTags(container) {
@@ -133,14 +213,16 @@ async function generateTeam() {
     currentTeamSize = teamSize;
     
     try {
-        const resp = await fetch(`${API_BASE}/random-team`, {
+                const resp = await fetch(`${API_BASE}/random-team`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 teamSize,
                 stars: starFilter,
                 professions: profFilter,
-                randomSkill
+                randomSkill,
+                // 登录状态下，随机池限制为玩家拥有的干员
+                ownedIds: sklandAuth.cred ? sklandAuth.ownedIds : null
             })
         });
         
@@ -204,21 +286,13 @@ function renderResult(data) {
     for (let i = 0; i < totalSlots; i++) {
         const op = orderedTeam[i] || null;
         if (op) {
-            const stars = '⭐'.repeat(op.star);
+                        const stars = '⭐'.repeat(op.star);
             const skillName = op.selected_skill ? op.selected_skill.name : '';
-            const avatarUrl = getOperatorAvatarUrl(op.name, op.id);
             
             html += `
                 <div class="team-card" data-slot="${i}">
                     <div class="avatar-wrapper">
-                        <img 
-                            src="${avatarUrl}" 
-                            alt="${op.name}" 
-                            class="op-avatar"
-                            loading="lazy"
-                            onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
-                        />
-                        <div class="avatar-placeholder" style="display:none;">🖼️</div>
+                        ${buildAvatarHtml(op.id, op.name)}
                     </div>
                     <div class="op-name">${op.name}</div>
                     <span class="star-emoji">${stars}</span>
@@ -243,7 +317,7 @@ function renderResult(data) {
         btn.addEventListener('click', function() {
             const id = this.dataset.id;
             const name = currentResult.team.find(op => op.id === id)?.name || id;
-            if (confirm(`确定排除 ${name} 吗？`)) {
+            if (confirm(`确定排除 ${name} 吗？排除后需要重新生成结果。`)) {
                 updateExclude('operator', id, 'add');
             }
         });
@@ -333,7 +407,12 @@ let operatorsData = [];
 
 async function loadOperators() {
     try {
-        const resp = await fetch(`${API_BASE}/operators`);
+        let url = `${API_BASE}/operators`;
+        // 登录状态下，干员一览只显示玩家拥有的干员
+        if (sklandAuth.cred && sklandAuth.ownedIds && sklandAuth.ownedIds.length > 0) {
+            url += `?owned=${encodeURIComponent(sklandAuth.ownedIds.join(','))}`;
+        }
+        const resp = await fetch(url);
         const result = await resp.json();
         if (result.code === 0) {
             operatorsData = result.data;
@@ -461,19 +540,11 @@ function renderOperators() {
         return;
     }
 
-    grid.innerHTML = list.map(op => {
-        const avatarUrl = getOperatorAvatarUrl(op.name, op.id);
+        grid.innerHTML = list.map(op => {
         return `
             <div class="op-card" data-id="${op.id}">
                 <div class="op-card-avatar">
-                    <img
-                        src="${avatarUrl}"
-                        alt="${op.name}"
-                        class="op-avatar"
-                        loading="lazy"
-                        onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
-                    />
-                    <div class="avatar-placeholder" style="display:none;">🖼️</div>
+                    ${buildAvatarHtml(op.id, op.name)}
                 </div>
                 <div class="op-card-name">${op.name}</div>
                 <div class="op-card-meta">
@@ -516,7 +587,317 @@ function renderOperators() {
     });
 })();
 
+// ===== 森空岛登录 =====
+
+const SKLAND_STORAGE_KEY = 'skland_auth';
+
+// 登录态：{ cred, credToken, accountName, characters: [...], currentUid, ownedIds: [...] }
+// credToken 是换取 cred 时同时返回的 token，用作调用森空岛接口时的签名密钥。
+let sklandAuth = {
+    cred: null,
+    credToken: null,
+    accountName: '',
+    characters: [],
+    currentUid: null,
+    ownedIds: []
+};
+
+// DOM 引用
+const loginForm = document.getElementById('loginForm');
+const loginStatus = document.getElementById('loginStatus');
+const loginPhone = document.getElementById('loginPhone');
+const loginPassword = document.getElementById('loginPassword');
+const loginCode = document.getElementById('loginCode');
+const passwordGroup = document.getElementById('passwordGroup');
+const codeGroup = document.getElementById('codeGroup');
+const loginBtn = document.getElementById('loginBtn');
+const sendCodeBtn = document.getElementById('sendCodeBtn');
+const loginError = document.getElementById('loginError');
+const accountName = document.getElementById('accountName');
+const characterList = document.getElementById('characterList');
+const ownedCountHint = document.getElementById('ownedCountHint');
+const logoutBtn = document.getElementById('logoutBtn');
+
+let loginMode = 'password'; // password | code
+
+// ---- 本地持久化 ----
+
+function saveAuth() {
+    // 只保存必要字段；cred 属于敏感信息，仅存本地
+        localStorage.setItem(SKLAND_STORAGE_KEY, JSON.stringify({
+        cred: sklandAuth.cred,
+        credToken: sklandAuth.credToken,
+        accountName: sklandAuth.accountName,
+        characters: sklandAuth.characters,
+        currentUid: sklandAuth.currentUid,
+        ownedIds: sklandAuth.ownedIds
+    }));
+}
+
+function loadAuth() {
+    try {
+        const raw = localStorage.getItem(SKLAND_STORAGE_KEY);
+        if (!raw) return false;
+                const data = JSON.parse(raw);
+        if (!data || !data.cred) return false;
+        // 旧版本数据可能缺少 credToken，此时视为失效，需重新登录
+        if (!data.credToken) {
+            localStorage.removeItem(SKLAND_STORAGE_KEY);
+            return false;
+        }
+        sklandAuth = Object.assign(sklandAuth, data);
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function clearAuth() {
+        localStorage.removeItem(SKLAND_STORAGE_KEY);
+    sklandAuth = {
+        cred: null,
+        credToken: null,
+        accountName: '',
+        characters: [],
+        currentUid: null,
+        ownedIds: []
+    };
+}
+
+// ---- 表单交互 ----
+
+document.querySelectorAll('.login-tab').forEach(tab => {
+    tab.addEventListener('click', function () {
+        document.querySelectorAll('.login-tab').forEach(t => t.classList.remove('active'));
+        this.classList.add('active');
+        loginMode = this.dataset.mode;
+        if (loginMode === 'password') {
+            passwordGroup.style.display = 'block';
+            codeGroup.style.display = 'none';
+        } else {
+            passwordGroup.style.display = 'none';
+            codeGroup.style.display = 'block';
+        }
+    });
+});
+
+function showLoginError(msg) {
+    loginError.textContent = msg || '';
+}
+
+sendCodeBtn.addEventListener('click', async function () {
+    showLoginError('');
+    const phone = loginPhone.value.trim();
+    if (!/^\d{6,15}$/.test(phone)) {
+        showLoginError('请输入正确的手机号');
+        return;
+    }
+    this.disabled = true;
+    this.textContent = '发送中...';
+    try {
+        const resp = await fetch(`${API_BASE}/skland/login/send-code`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone })
+        });
+        const result = await resp.json();
+        if (result.code !== 0) {
+            showLoginError(result.msg || '发送验证码失败');
+            this.disabled = false;
+            this.textContent = '获取验证码';
+            return;
+        }
+        // 倒计时
+        let countdown = 60;
+        this.textContent = `${countdown}s`;
+        const timer = setInterval(() => {
+            countdown--;
+            if (countdown <= 0) {
+                clearInterval(timer);
+                this.disabled = false;
+                this.textContent = '获取验证码';
+            } else {
+                this.textContent = `${countdown}s`;
+            }
+        }, 1000);
+    } catch (err) {
+        showLoginError('网络错误，请确保后端服务已启动');
+        this.disabled = false;
+        this.textContent = '获取验证码';
+    }
+});
+
+loginBtn.addEventListener('click', async function () {
+    showLoginError('');
+    const phone = loginPhone.value.trim();
+    if (!/^\d{6,15}$/.test(phone)) {
+        showLoginError('请输入正确的手机号');
+        return;
+    }
+
+    let endpoint, body;
+    if (loginMode === 'password') {
+        const password = loginPassword.value;
+        if (!password) {
+            showLoginError('请输入密码');
+            return;
+        }
+        endpoint = `${API_BASE}/skland/login/password`;
+        body = { phone, password };
+    } else {
+        const code = loginCode.value.trim();
+        if (!code) {
+            showLoginError('请输入验证码');
+            return;
+        }
+        endpoint = `${API_BASE}/skland/login/code`;
+        body = { phone, code };
+    }
+
+    this.disabled = true;
+    this.textContent = '登录中...';
+    try {
+        const resp = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const result = await resp.json();
+        if (result.code !== 0) {
+            showLoginError(result.msg || '登录失败');
+            return;
+        }
+                sklandAuth.cred = result.data.cred;
+        sklandAuth.credToken = result.data.token;
+        sklandAuth.accountName = phone.replace(/^(\d{3})\d+(\d{4})$/, '$1****$2');
+        await afterLogin();
+    } catch (err) {
+        showLoginError('网络错误，请确保后端服务已启动');
+    } finally {
+        this.disabled = false;
+        this.textContent = '登 录';
+    }
+});
+
+logoutBtn.addEventListener('click', function () {
+    if (!confirm('确定退出登录吗？')) return;
+    clearAuth();
+    renderLoginState();
+    // 退出后干员一览恢复全量
+    loadOperators();
+});
+
+// ---- 登录成功后的流程 ----
+
+async function afterLogin() {
+    // 获取绑定角色列表
+    try {
+        const resp = await fetch(`${API_BASE}/skland/bindings`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ cred: sklandAuth.cred, token: sklandAuth.credToken })
+        });
+        const result = await resp.json();
+        if (result.code !== 0) {
+            showLoginError(result.msg || '获取角色列表失败');
+            clearAuth();
+            renderLoginState();
+            return;
+        }
+        sklandAuth.characters = result.data.characters || [];
+        if (sklandAuth.characters.length === 0) {
+            showLoginError('该账号下没有找到明日方舟角色');
+            clearAuth();
+            renderLoginState();
+            return;
+        }
+        // 默认选择第一个角色
+        sklandAuth.currentUid = sklandAuth.characters[0].uid;
+        renderLoginState();
+        saveAuth();
+        await loadOwnedOperators(sklandAuth.currentUid);
+    } catch (err) {
+        showLoginError('网络错误，请确保后端服务已启动');
+    }
+}
+
+// 选择角色
+async function selectCharacter(uid) {
+    if (sklandAuth.currentUid === uid) return;
+    sklandAuth.currentUid = uid;
+    renderLoginState();
+    await loadOwnedOperators(uid);
+    saveAuth();
+}
+
+// 拉取玩家拥有的干员
+async function loadOwnedOperators(uid) {
+    ownedCountHint.textContent = '干员数据加载中...';
+    try {
+        const resp = await fetch(`${API_BASE}/skland/players`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cred: sklandAuth.cred, token: sklandAuth.credToken, uid })
+        });
+        const result = await resp.json();
+        if (result.code !== 0) {
+            ownedCountHint.textContent = result.msg || '获取干员数据失败';
+            return;
+        }
+        sklandAuth.ownedIds = result.data.ownedIds || [];
+        ownedCountHint.textContent = `已加载 ${sklandAuth.ownedIds.length} 位拥有干员`;
+        saveAuth();
+        // 干员一览页同步为玩家拥有干员
+        loadOperators();
+    } catch (err) {
+        ownedCountHint.textContent = '网络错误，请确保后端服务已启动';
+    }
+}
+
+// ---- 渲染登录状态 ----
+
+function renderLoginState() {
+    if (sklandAuth.cred) {
+        loginForm.style.display = 'none';
+        loginStatus.style.display = 'block';
+        accountName.textContent = sklandAuth.accountName || '森空岛账号';
+
+        // 角色列表
+        characterList.innerHTML = sklandAuth.characters.map(c => {
+            const active = c.uid === sklandAuth.currentUid ? 'active' : '';
+            const defaultTag = c.isDefault ? '<span class="char-default">默认</span>' : '';
+            return `
+                <div class="character-item ${active}" data-uid="${c.uid}">
+                    <div class="char-name">${c.nickName || c.uid}</div>
+                    <div class="char-meta">
+                        <span class="char-channel">${c.channelName || '未知'}</span>
+                        ${defaultTag}
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        characterList.querySelectorAll('.character-item').forEach(item => {
+            item.addEventListener('click', () => selectCharacter(item.dataset.uid));
+        });
+
+        if (sklandAuth.ownedIds && sklandAuth.ownedIds.length > 0) {
+            ownedCountHint.textContent = `已加载 ${sklandAuth.ownedIds.length} 位拥有干员`;
+        } else {
+            ownedCountHint.textContent = '干员加载中...';
+        }
+    } else {
+        loginForm.style.display = 'block';
+        loginStatus.style.display = 'none';
+    }
+}
+document.getElementById('clearExcludeBtn').addEventListener('click', clearAllExclude);
 // ===== 启动 =====
+
+// 先恢复本地登录态，再加载数据（这样干员一览能正确带 owned 参数）
+if (loadAuth()) {
+    renderLoginState();
+}
 
 loadOperators();
 loadExclude();

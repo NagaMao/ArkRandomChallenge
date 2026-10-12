@@ -3,20 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>明日方舟 - 随机队伍挑战</title>
+    <title>明日方舟 - 随机队伍关卡挑战</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div id="app">
         <header>
             <h1>🎲 随机队伍挑战</h1>
-            <p class="subtitle">明日方舟 · 干员随机关卡生成器</p>
+            <p class="subtitle">博士，该锻炼大脑了</p>
         </header>
 
-        <!-- 顶部导航栏 -->
+                <!-- 顶部导航栏 -->
         <nav class="navbar">
             <button class="nav-tab active" data-page="challenge">随机挑战</button>
             <button class="nav-tab" data-page="operators">干员一览</button>
+            <button class="nav-tab" data-page="login">账号登录</button>
         </nav>
 
         <main>
@@ -127,6 +128,7 @@
                         <button class="tab-btn active" data-tab="operators">干员</button>
                         <button class="tab-btn" data-tab="stages">关卡</button>
                     </div>
+                    <button id="clearExcludeBtn" class="btn-clear-exclude">🗑️ 清空黑名单</button>
                     <div id="excludeContent">
                         <!-- 动态渲染 -->
                     </div>
@@ -178,15 +180,83 @@
 
                     <p class="hint" id="opCountHint">加载中...</p>
 
-                    <div id="operatorsGrid" class="operators-grid">
+                                        <div id="operatorsGrid" class="operators-grid">
                         <!-- 动态渲染 -->
+                    </div>
+                </section>
+            </div>
+
+            <!-- ===================== 页面：账号登录 ===================== -->
+            <div class="page" id="page-login">
+                <section class="panel login-panel">
+                    <h2>🔐 森空岛账号登录</h2>
+                    <p class="hint">
+                        登录后，随机池将自动切换为「你实际拥有的干员」。
+                        凭证仅保存在你的浏览器本地，请勿在公共设备上登录。
+                    </p>
+                    <p class="hint2">
+                        本项目不收集任何账号数据，干员box信息仅用于添加随机池。
+                    </p>
+                    <!-- 未登录：登录表单 -->
+                    <div id="loginForm">
+                        <div class="login-tabs">
+                            <button class="login-tab active" data-mode="password">密码登录</button>
+                            <button class="login-tab" data-mode="code">验证码登录</button>
+                        </div>
+
+                        <div class="setting-group">
+                            <label for="loginPhone">手机号</label>
+                            <input type="tel" id="loginPhone" placeholder="请输入手机号" autocomplete="off">
+                        </div>
+
+                        <!-- 密码模式 -->
+                        <div class="setting-group" id="passwordGroup">
+                            <label for="loginPassword">密码</label>
+                            <input type="password" id="loginPassword" placeholder="请输入密码" autocomplete="off">
+                        </div>
+
+                        <!-- 验证码模式 -->
+                        <div class="setting-group" id="codeGroup" style="display:none;">
+                            <label for="loginCode">验证码</label>
+                            <div class="code-row">
+                                <input type="text" id="loginCode" placeholder="请输入验证码" autocomplete="off">
+                                <button id="sendCodeBtn" class="btn-secondary">获取验证码</button>
+                            </div>
+                        </div>
+
+                        <button id="loginBtn" class="btn-primary">登 录</button>
+                        <p class="login-error" id="loginError"></p>
+                    </div>
+
+                    <!-- 已登录：账号信息 -->
+                    <div id="loginStatus" style="display:none;">
+                        <div class="account-info">
+                            <span class="account-label">已登录</span>
+                            <span id="accountName" class="account-name"></span>
+                            <span class="account-badge">✓</span>
+                        </div>
+
+                        <div class="setting-group">
+                            <label>选择角色（随机池将使用该角色拥有的干员）</label>
+                            <div id="characterList" class="character-list">
+                                <!-- 动态渲染 -->
+                            </div>
+                        </div>
+
+                        <div class="setting-group">
+                            <p class="hint" id="ownedCountHint">干员加载中...</p>
+                        </div>
+
+                        <button id="logoutBtn" class="btn-danger">退出登录</button>
                     </div>
                 </section>
             </div>
         </main>
 
         <footer>
-            <p>数据来源：AK-Dataknights · 本地缓存</p>
+            <p>数据来源：<a href="https://github.com/Kengxxiao/ArknightsGameData" target="_blank" rel="noopener">ArknightsGameData</a>
+                 by Kengxxiao · 森空岛API来源：<a href="https://github.com/ProbiusOfficial/Skland_API" target="_blank" rel="noopener">Skland_API</a> by ProbiusOfficial探姬 ·  喜欢这个小工具的可以在 <a href="https://github.com/NagaMao/ArkRandomChallenge" target="_blank" rel="noopener">github</a> 点一个star
+            </p>
         </footer>
     </div>
 
