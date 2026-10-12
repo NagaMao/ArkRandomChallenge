@@ -59,9 +59,19 @@ Cloudflare Workers 的 `fetch()` API（异步）。
 _WsgiDefault = wsgi.entrypoint(app)
 
 class Default(_WsgiDefault):
-    async def scheduled(self, controller, env, ctx):
+    async def fetch(self, request, *args, **kwargs):   # 方式 B：拦截 POST /api/refresh
+        ...
+        return await super().fetch(request, *args, **kwargs)
+
+    async def scheduled(self, controller, env, ctx):   # 方式 A：每日定时刷新
         ...
 ```
+
+> ⚠️ 另一个坑（方式 B 的实现方式）：刷新需要从网络拉取数据（`await fetch(...)`），
+> 必须运行在**真正的异步上下文**里。如果把 `/api/refresh` 写成 Flask 视图、在同步栈里
+> 用 `run_sync(refresh_all_data(env))` 调用，线上会直接报
+> **HTTP 503 / `error code: 1102`**（Worker 运行时异常）。
+> 因此方式 B 由入口类 `Default.fetch` 直接拦截处理，其余请求再交给 Flask(WSGI)。
 
 ## 数据刷新策略（方式 A / A+B）
 
