@@ -326,53 +326,43 @@ class Default(_WsgiDefault):
         env = self.env
         print(f"[refresh] 收到刷新请求：{getattr(request, 'url', '')}")
 
+        def reply(payload, status):
+            return Response.new(
+                json.dumps(payload, ensure_ascii=False),
+                status=status,
+                headers={"content-type": "application/json; charset=utf-8"},
+            )
+
+        # 开关关闭时直接返回成功（不刷新），避免让部署命令因非 200 而失败
         if not _deploy_refresh_enabled(env):
-            return Response.new(
-                json.dumps({"code": 404, "msg": "部署时刷新已关闭（ENABLE_DEPLOY_REFRESH=false）"},
-                           ensure_ascii=False),
-                status=404,
-                headers={"content-type": "application/json; charset=utf-8"},
-            )
+            print("[refresh] 方式B已关闭（ENABLE_DEPLOY_REFRESH=false），跳过刷新")
+            return reply({"code": 0, "msg": "方式B已关闭，跳过刷新（方式A仍生效）"}, 200)
 
-        # 鉴权：从请求头或查询参数取 token
+        # 可选鉴权：仅当配置了 REFRESH_TOKEN 时才校验
         expected = _get_refresh_token(env)
-        provided = None
-        try:
-            headers = getattr(request, "headers", None)
-            if headers is not None:
-                provided = headers.get("X-Refresh-Token")
-            if not provided:
-                url = getattr(request, "url", "") or ""
-                from urllib.parse import urlsplit, parse_qs
-                qs = parse_qs(urlsplit(url).query)
-                provided = (qs.get("token") or [None])[0]
-        except Exception as e:  # noqa: BLE001
-            print(f"[refresh] 解析 token 失败：{e}")
+        if expected:
+            provided = None
+            try:
+                headers = getattr(request, "headers", None)
+                if headers is not None:
+                    provided = headers.get("X-Refresh-Token")
+                if not provided:
+                    url = getattr(request, "url", "") or ""
+                    from urllib.parse import urlsplit, parse_qs
+                    qs = parse_qs(urlsplit(url).query)
+                    provided = (qs.get("token") or [None])[0]
+            except Exception as e:  # noqa: BLE001
+                print(f"[refresh] 解析 token 失败：{e}")
 
-        # 只有配置了 token 时才校验；未配置则允许（刷新仅拉取公开数据，无敏感信息）
-        if expected and provided != expected:
-            return Response.new(
-                json.dumps({"code": 403, "msg": "无权访问：token 缺失或不正确"},
-                           ensure_ascii=False),
-                status=403,
-                headers={"content-type": "application/json; charset=utf-8"},
-            )
+            if provided != expected:
+                return reply({"code": 403, "msg": "无权访问：token 缺失或不正确"}, 403)
 
         try:
             stats = await refresh_data(env)
-            body = json.dumps({"code": 0, "msg": "刷新成功", "data": stats}, ensure_ascii=False)
-            return Response.new(
-                body,
-                status=200,
-                headers={"content-type": "application/json; charset=utf-8"},
-            )
+            return reply({"code": 0, "msg": "刷新成功", "data": stats}, 200)
         except Exception as e:  # noqa: BLE001
             print(f"[refresh] 刷新失败：{e}")
-            return Response.new(
-                json.dumps({"code": 1, "msg": f"刷新失败：{e}"}, ensure_ascii=False),
-                status=500,
-                headers={"content-type": "application/json; charset=utf-8"},
-            )
+            return reply({"code": 1, "msg": f"刷新失败：{e}"}, 500)
 
     async def scheduled(self, controller, env, ctx):
         """方式A：每日 04:00（北京时间 = UTC 20:00）刷新数据。

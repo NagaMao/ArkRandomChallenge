@@ -103,8 +103,6 @@ ENABLE_DEPLOY_REFRESH_DEFAULT = True
 
 ```bash
 wrangler secret put REFRESH_TOKEN
-```
-
    接口也接受 `X-Refresh-Token` 请求头，安全性高于 URL 查询参数。
 
 2. 在 Cloudflare Dashboard → 你的 Worker → Settings → Builds → **Deploy command** 填写：
