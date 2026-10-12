@@ -204,3 +204,11 @@ def parse_stages(raw_data):
         })
 
     return result
+
+
+def get_data_version(env=None):
+    """返回数据版本信息"""
+    return {
+        "version": "1.0.0",
+        "lastUpdated": None  # 在 Workers 环境中，版本时间由 KV 缓存写入时间决定
+    }

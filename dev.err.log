@@ -1,0 +1,10 @@
+[36m[1mDownloading[0m[39m pyodide-3.14.2-emscripten-wasm32-musl (download) [2m(7.2MiB)[0m
+ [36m[1mDownloaded[0m[39m pyodide-3.14.2-emscripten-wasm32-musl (download)
+[1m[31merror[39m[0m[1m:[0m Querying Python at `C:\Users\gsc33\AppData\Roaming\uv\python\pyodide-3.14.2-emscripten-wasm32-musl\python.exe` failed with exit status exit code: 1
+
+[31m[stderr][39m
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    import sys; sys.path = ["C://Users//gsc33//AppData//Local//uv//cache//.tmpyVpG0B"] + sys.path; from python.get_interpreter_info import main; main()
+                                                                                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ModuleNotFoundError: No module named 'python'
