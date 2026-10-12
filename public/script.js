@@ -19,57 +19,19 @@ const teamDisplay = document.getElementById('teamDisplay');
 const stageDisplay = document.getElementById('stageDisplay');
 
 // ===== 图片配置 =====
+// 头像文件名格式：{干员ID}.png，如 char_1013_chen2.png
 const AVATAR_CDN_BASE = 'https://cdn.jsdelivr.net/gh/yuanyan3060/ArknightsGameResource@main/avatar/';
 
+/**
+ * 获取干员头像 URL
+ * @param {string} name - 干员名称（保留备用）
+ * @param {string} id - 干员 ID（如 char_1013_chen2）
+ * @returns {string} 头像图片 URL
+ */
 function getOperatorAvatarUrl(name, id) {
     return `${AVATAR_CDN_BASE}${id}.png`;
 }
 
-// ===== 黑名单（localStorage 本地存储） =====
-
-const EXCLUDE_KEY = 'arknights_exclude';
-
-function loadExcludeLocal() {
-    try {
-        const raw = localStorage.getItem(EXCLUDE_KEY);
-        if (raw) {
-            const data = JSON.parse(raw);
-            currentExclude = {
-                operators: data.operators || [],
-                stages: data.stages || []
-            };
-        } else {
-            currentExclude = { operators: [], stages: [] };
-        }
-    } catch (e) {
-        currentExclude = { operators: [], stages: [] };
-    }
-    renderExclude('operators');
-}
-
-function saveExcludeLocal() {
-    localStorage.setItem(EXCLUDE_KEY, JSON.stringify(currentExclude));
-}
-
-function updateExclude(type, id, action) {
-    const key = type === 'operator' ? 'operators' : 'stages';
-    if (action === 'add') {
-        if (!currentExclude[key].includes(id)) {
-            currentExclude[key].push(id);
-        }
-    } else if (action === 'remove') {
-        currentExclude[key] = currentExclude[key].filter(x => x !== id);
-    }
-    saveExcludeLocal();
-    renderExclude('operators');
-}
-
-function clearAllExclude() {
-    if (!confirm('确定清空所有黑名单吗？')) return;
-    currentExclude = { operators: [], stages: [] };
-    saveExcludeLocal();
-    renderExclude('operators');
-}
 // ===== 工具函数 =====
 
 function getSelectedTags(container) {
@@ -87,34 +49,34 @@ function getProfessionFilter() {
     return getSelectedTags(container);
 }
 
+function getTeamSize() {
+    const mode = sizeMode.value;
+    if (mode === 'fixed') {
+        return { mode: 'fixed', size: parseInt(fixedSize.value) || 4 };
+    } else {
+        return { 
+            mode: 'range', 
+            min: parseInt(minSize.value) || 3,
+            max: parseInt(maxSize.value) || 6
+        };
+    }
+}
+
 function getRandomSkill() {
     return document.getElementById('randomSkill').checked;
 }
 
-/**
- * 校验人数输入是否合法（1~12 的纯数字）
- */
-function validateSizeInput(input) {
-    const raw = input.value.trim();
-    if (!/^\d+$/.test(raw)) {
-        return { ok: false, value: 0 };
-    }
-    const val = parseInt(raw, 10);
-    if (val < 1 || val > 12) {
-        return { ok: false, value: val };
-    }
-    return { ok: true, value: val };
-}
+// ===== 标记切换（仅随机挑战页） =====
 
-// ===== 标记切换 =====
-
-document.querySelectorAll('.filter-tags .tag').forEach(tag => {
+// 星级/职业标签切换
+document.querySelectorAll('#page-challenge .filter-tags .tag').forEach(tag => {
     tag.addEventListener('click', function() {
         this.classList.toggle('active');
     });
 });
 
-document.querySelectorAll('.filter-btn').forEach(btn => {
+// 全选/清除按钮（仅随机挑战页）
+document.querySelectorAll('#page-challenge .filter-btn').forEach(btn => {
     btn.addEventListener('click', function() {
         const target = this.dataset.target;
         const container = target === 'star' 
@@ -159,44 +121,17 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 async function generateTeam() {
     const starFilter = getStarFilter();
     const profFilter = getProfessionFilter();
+    const size = getTeamSize();
     const randomSkill = getRandomSkill();
     
-    // ===== 人数校验 =====
-    const mode = sizeMode.value;
     let teamSize;
-    
-    if (mode === 'fixed') {
-        const check = validateSizeInput(fixedSize);
-        if (!check.ok) {
-            alert('队伍人数请输入1~12的数字');
-            fixedSize.focus();
-            return;
-        }
-        teamSize = check.value;
+    if (size.mode === 'fixed') {
+        teamSize = size.size;
     } else {
-        const checkMin = validateSizeInput(minSize);
-        if (!checkMin.ok) {
-            alert('队伍人数请输入1~12的数字');
-            minSize.focus();
-            return;
-        }
-        const checkMax = validateSizeInput(maxSize);
-        if (!checkMax.ok) {
-            alert('队伍人数请输入1~12的数字');
-            maxSize.focus();
-            return;
-        }
-        if (checkMin.value > checkMax.value) {
-            alert('最小人数不能大于最大人数');
-            minSize.focus();
-            return;
-        }
-        teamSize = Math.floor(Math.random() * (checkMax.value - checkMin.value + 1)) + checkMin.value;
+        teamSize = Math.floor(Math.random() * (size.max - size.min + 1)) + size.min;
     }
-    
     currentTeamSize = teamSize;
     
-    // 把本地黑名单一起发给后端
     try {
         const resp = await fetch(`${API_BASE}/random-team`, {
             method: 'POST',
@@ -205,8 +140,7 @@ async function generateTeam() {
                 teamSize,
                 stars: starFilter,
                 professions: profFilter,
-                randomSkill,
-                exclude: currentExclude
+                randomSkill
             })
         });
         
@@ -228,34 +162,23 @@ async function generateTeam() {
 
 /**
  * 将干员按竖列优先的顺序重新排列
- * PC 端（6列2行）用竖列优先，其他布局用行优先
  */
 function reorderTeamForVerticalDisplay(team, teamSize) {
     if (teamSize === 0) return [];
     
-    const gridEl = document.getElementById('teamDisplay');
-    const style = getComputedStyle(gridEl);
-    const cols = parseInt(style.getPropertyValue('--team-cols')) || 6;
-    const rows = parseInt(style.getPropertyValue('--team-rows')) || 2;
+    const cols = 6;
+    const rows = 2;
     const totalSlots = cols * rows;
     
     const displayTeam = team.slice(0, totalSlots);
     const count = displayTeam.length;
     const result = new Array(totalSlots).fill(null);
     
-    if (cols === 6 && rows === 2) {
-        // PC 端：竖列优先
-        for (let i = 0; i < count; i++) {
-            const colIndex = Math.floor(i / rows);
-            const rowIndex = i % rows;
-            const targetIndex = colIndex + rowIndex * cols;
-            result[targetIndex] = displayTeam[i];
-        }
-    } else {
-        // 手机/平板：行优先
-        for (let i = 0; i < count; i++) {
-            result[i] = displayTeam[i];
-        }
+    for (let i = 0; i < count; i++) {
+        const colIndex = Math.floor(i / rows);
+        const rowIndex = i % rows;
+        const targetIndex = colIndex + rowIndex * cols;
+        result[targetIndex] = displayTeam[i];
     }
     
     return result;
@@ -272,14 +195,9 @@ function renderResult(data) {
         stageDisplay.textContent = '无可用关卡';
     }
     
-    // 队伍
+    // 队伍 - 2行6列布局，竖列优先填充
     const teamSize = data.team_size || data.team.length;
-    const gridEl = document.getElementById('teamDisplay');
-    const style = getComputedStyle(gridEl);
-    const cols = parseInt(style.getPropertyValue('--team-cols')) || 6;
-    const rows = parseInt(style.getPropertyValue('--team-rows')) || 2;
-    const totalSlots = cols * rows;
-    
+    const totalSlots = 12;
     const orderedTeam = reorderTeamForVerticalDisplay(data.team, teamSize);
     
     let html = '';
@@ -325,13 +243,43 @@ function renderResult(data) {
         btn.addEventListener('click', function() {
             const id = this.dataset.id;
             const name = currentResult.team.find(op => op.id === id)?.name || id;
-            if (confirm(`确定排除 ${name} 吗？排除后需要重新生成结果。`)) {
+            if (confirm(`确定排除 ${name} 吗？`)) {
                 updateExclude('operator', id, 'add');
             }
         });
     });
     
     resultPanel.scrollIntoView({ behavior: 'smooth' });
+}
+
+async function updateExclude(type, id, action) {
+    try {
+        const resp = await fetch(`${API_BASE}/exclude`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type, id, action })
+        });
+        const result = await resp.json();
+        if (result.code === 0) {
+            currentExclude = result.data;
+            renderExclude('operators');
+        }
+    } catch (err) {
+        console.error(err);
+    }
+}
+
+async function loadExclude() {
+    try {
+        const resp = await fetch(`${API_BASE}/exclude/list`);
+        const result = await resp.json();
+        if (result.code === 0) {
+            currentExclude = result.data;
+            renderExclude('operators');
+        }
+    } catch (err) {
+        console.error(err);
+    }
 }
 
 function renderExclude(tab = 'operators') {
@@ -380,7 +328,7 @@ if (randomSkillCheckbox && skillLabel) {
     });
 }
 
-// ===== 初始化时加载干员数据 =====
+// ===== 初始化时加载干员数据（用于显示名字） =====
 let operatorsData = [];
 
 async function loadOperators() {
@@ -389,7 +337,8 @@ async function loadOperators() {
         const result = await resp.json();
         if (result.code === 0) {
             operatorsData = result.data;
-            // 干员数据加载完成后，重新渲染黑名单以显示正确名字
+            // 数据就绪后渲染"干员一览"页，并刷新黑名单里的干员名字
+            renderOperators();
             renderExclude('operators');
         }
     } catch (err) {
@@ -397,6 +346,36 @@ async function loadOperators() {
     }
 }
 
+// ===== 人数输入范围限制 =====
+
+function clampTeamSize(input) {
+    let val = parseInt(input.value);
+    if (isNaN(val) || val < 1) {
+        input.value = 1;
+    } else if (val > 12) {
+        input.value = 12;
+    }
+    // 联动校验
+    if (input.id === 'minSize') {
+        const maxVal = parseInt(maxSize.value) || 6;
+        if (parseInt(input.value) > maxVal) input.value = maxVal;
+    } else if (input.id === 'maxSize') {
+        const minVal = parseInt(minSize.value) || 3;
+        if (parseInt(input.value) < minVal) input.value = minVal;
+    }
+}
+
+// 固定人数
+fixedSize.addEventListener('change', () => clampTeamSize(fixedSize));
+fixedSize.addEventListener('input', () => clampTeamSize(fixedSize));
+
+// 最小人数
+minSize.addEventListener('change', () => clampTeamSize(minSize));
+minSize.addEventListener('input', () => clampTeamSize(minSize));
+
+// 最大人数
+maxSize.addEventListener('change', () => clampTeamSize(maxSize));
+maxSize.addEventListener('input', () => clampTeamSize(maxSize));
 // ===== 事件绑定 =====
 
 generateBtn.addEventListener('click', generateTeam);
@@ -409,14 +388,138 @@ document.getElementById('excludeAllBtn').addEventListener('click', function() {
         teamIds.forEach(id => {
             updateExclude('operator', id, 'add');
         });
+        setTimeout(() => loadExclude(), 500);
     }
 });
-document.getElementById('clearExcludeBtn').addEventListener('click', clearAllExclude);
+
+// ===== 顶部导航栏页面切换 =====
+
+document.querySelectorAll('.nav-tab').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const page = this.dataset.page;
+
+        // 切换页签高亮
+        document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+
+        // 切换页面显示
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+        const target = document.getElementById('page-' + page);
+        if (target) target.classList.add('active');
+
+        // 切到干员一览时重新渲染（保证使用最新筛选状态）
+        if (page === 'operators') {
+            renderOperators();
+        }
+
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+});
+
+// ===== 干员一览：筛选与渲染 =====
+
+function getOpProfessionFilter() {
+    const container = document.getElementById('opProfessionFilter');
+    if (!container) return [];
+    return getSelectedTags(container);
+}
+
+function getOpStarFilter() {
+    const container = document.getElementById('opStarFilter');
+    if (!container) return [];
+    return getSelectedTags(container).map(Number);
+}
+
+function renderOperators() {
+    const grid = document.getElementById('operatorsGrid');
+    const hint = document.getElementById('opCountHint');
+    if (!grid) return;
+
+    const professions = getOpProfessionFilter();
+    const stars = getOpStarFilter();
+
+    // 筛选：职业、星级（任一为空表示不限制）
+    let list = operatorsData || [];
+    if (professions.length > 0) {
+        list = list.filter(op => professions.includes(op.profession));
+    }
+    if (stars.length > 0) {
+        list = list.filter(op => stars.includes(op.star));
+    }
+
+    // 排序：先按星级降序，再按职业，最后按名字
+    list = list.slice().sort((a, b) => {
+        if (b.star !== a.star) return b.star - a.star;
+        if (a.profession !== b.profession) return a.profession.localeCompare(b.profession, 'zh');
+        return a.name.localeCompare(b.name, 'zh');
+    });
+
+    if (hint) hint.textContent = `共 ${list.length} 位干员`;
+
+    if (list.length === 0) {
+        grid.innerHTML = `<p class="empty-hint">没有符合条件的干员</p>`;
+        return;
+    }
+
+    grid.innerHTML = list.map(op => {
+        const avatarUrl = getOperatorAvatarUrl(op.name, op.id);
+        return `
+            <div class="op-card" data-id="${op.id}">
+                <div class="op-card-avatar">
+                    <img
+                        src="${avatarUrl}"
+                        alt="${op.name}"
+                        class="op-avatar"
+                        loading="lazy"
+                        onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
+                    />
+                    <div class="avatar-placeholder" style="display:none;">🖼️</div>
+                </div>
+                <div class="op-card-name">${op.name}</div>
+                <div class="op-card-meta">
+                    <span class="op-card-star">${'⭐'.repeat(op.star)}</span>
+                    <span class="op-card-profession">${op.profession}</span>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// 干员一览页的筛选标签交互
+(function bindOperatorsFilters() {
+    const profContainer = document.getElementById('opProfessionFilter');
+    const starContainer = document.getElementById('opStarFilter');
+
+    [profContainer, starContainer].forEach(container => {
+        if (!container) return;
+        container.querySelectorAll('.tag').forEach(tag => {
+            tag.addEventListener('click', function() {
+                this.classList.toggle('active');
+                renderOperators();
+            });
+        });
+    });
+
+    // 全选 / 清除
+    document.querySelectorAll('.filter-btn[data-target^="op-"]').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const target = this.dataset.target; // op-profession / op-star
+            const container = target === 'op-star' ? starContainer : profContainer;
+            if (!container) return;
+
+            const isSelectAll = this.classList.contains('select-all');
+            container.querySelectorAll('.tag').forEach(tag => {
+                tag.classList.toggle('active', isSelectAll);
+            });
+            renderOperators();
+        });
+    });
+})();
 
 // ===== 启动 =====
 
 loadOperators();
-loadExcludeLocal();
+loadExclude();
 
 console.log('🎲 明日方舟随机队伍工具已启动！');
 console.log('后端 API:', API_BASE);

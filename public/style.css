@@ -134,40 +134,6 @@ header h1 {
 .team-size-control input {
     width: 60px;
 }
-/* 数字输入框：统一 spinner，兼容移动端 */
-.team-size-control input[type="number"] {
-    width: 60px;
-    padding: 6px 4px 6px 10px;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    font-size: 0.95em;
-    text-align: center;
-    /* 恢复默认 spinner，允许点击 */
-    -moz-appearance: number-input;
-    appearance: auto;
-}
-
-/* WebKit 系浏览器（Chrome / Safari / 移动端）的 spinner 按钮 */
-.team-size-control input[type="number"]::-webkit-inner-spin-button,
-.team-size-control input[type="number"]::-webkit-outer-spin-button {
-    -webkit-appearance: inner-spin-button;
-    opacity: 1;           /* 之前可能被隐藏 */
-    height: 28px;
-    cursor: pointer;
-}
-
-/* 移动端：稍微放大，方便点按 */
-@media (max-width: 540px) {
-    .team-size-control input[type="number"] {
-        width: 68px;
-        padding: 8px 4px 8px 8px;
-        font-size: 1em;
-    }
-    .team-size-control input[type="number"]::-webkit-inner-spin-button,
-    .team-size-control input[type="number"]::-webkit-outer-spin-button {
-        height: 34px;
-    }
-}
 
 .filter-tags {
     display: flex;
@@ -317,31 +283,12 @@ header h1 {
 }
 
 /* ===== 编队网格布局 - 2行6列 ===== */
-/* 默认：PC 端 6 列 2 行 */
 .team-grid {
-    --team-cols: 6;
-    --team-rows: 2;
     display: grid;
-    grid-template-columns: repeat(var(--team-cols), 1fr);
+    grid-template-columns: repeat(6, 1fr);
     gap: 8px;
     margin-top: 8px;
     max-width: 100%;
-}
-
-/* 平板：4 列 3 行 */
-@media (max-width: 820px) {
-    .team-grid {
-        --team-cols: 4;
-        --team-rows: 3;
-    }
-}
-
-/* 手机：2 列 6 行 */
-@media (max-width: 540px) {
-    .team-grid {
-        --team-cols: 2;
-        --team-rows: 6;
-    }
 }
 
 .team-grid .team-card {
@@ -463,37 +410,6 @@ header h1 {
     color: #c0392b;
 }
 
-.exclude-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 16px;
-    flex-wrap: wrap;
-    gap: 8px;
-}
-
-.exclude-tabs {
-    display: flex;
-    gap: 0;
-    margin-bottom: 0;
-}
-
-.btn-clear-exclude {
-    padding: 6px 14px;
-    background: #fff;
-    color: #e74c3c;
-    border: 1px solid #e74c3c;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 0.85em;
-    font-weight: 500;
-    transition: all 0.2s;
-}
-
-.btn-clear-exclude:hover {
-    background: #e74c3c;
-    color: #fff;
-}
 .empty-hint {
     color: #999;
     font-size: 0.9em;
@@ -505,14 +421,7 @@ footer {
     font-size: 0.8em;
     padding: 20px 0;
 }
-footer a {
-    color: #667eea;
-    text-decoration: none;
-}
 
-footer a:hover {
-    text-decoration: underline;
-}
 /* ===== 响应式 ===== */
 
 /* 平板：改为4列 */
@@ -595,4 +504,132 @@ footer a:hover {
     display: flex;
     justify-content: center;
     align-items: center;
+}
+
+/* ===== 顶部导航栏 ===== */
+.navbar {
+    display: flex;
+    gap: 4px;
+    background: #fff;
+    border-radius: 12px;
+    padding: 6px;
+    margin-bottom: 24px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.nav-tab {
+    flex: 1;
+    padding: 10px 16px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: #666;
+    font-size: 1em;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+.nav-tab:hover {
+    background: #f0f2f5;
+    color: #667eea;
+}
+
+.nav-tab.active {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: #fff;
+}
+
+/* ===== 页面显示切换 ===== */
+.page {
+    display: none;
+}
+
+.page.active {
+    display: block;
+}
+
+/* ===== 干员一览网格 ===== */
+.operators-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+    gap: 12px;
+    margin-top: 8px;
+}
+
+.op-card {
+    background: #f8f9ff;
+    border: 1px solid #eef0f6;
+    border-radius: 10px;
+    padding: 10px 6px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.op-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102,126,234,0.18);
+}
+
+.op-card-avatar {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    overflow: hidden;
+    background: #e8ecf1;
+    border: 2px solid #ddd;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 6px;
+    flex-shrink: 0;
+}
+
+.op-card-name {
+    font-weight: 600;
+    font-size: 0.85em;
+    line-height: 1.3;
+    word-break: break-all;
+}
+
+.op-card-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    margin-top: 4px;
+}
+
+.op-card-star {
+    font-size: 0.7em;
+    color: #f5a623;
+    line-height: 1;
+    letter-spacing: -1px;
+}
+
+.op-card-profession {
+    font-size: 0.7em;
+    color: #764ba2;
+    background: rgba(118,75,162,0.08);
+    border-radius: 8px;
+    padding: 0 6px;
+}
+
+/* 干员一览响应式 */
+@media (max-width: 540px) {
+    .operators-grid {
+        grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+        gap: 8px;
+    }
+    .op-card-avatar {
+        width: 52px;
+        height: 52px;
+    }
 }

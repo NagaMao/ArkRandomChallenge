@@ -66,17 +66,17 @@ function getRandomSkill() {
     return document.getElementById('randomSkill').checked;
 }
 
-// ===== 标记切换 =====
+// ===== 标记切换（仅随机挑战页） =====
 
 // 星级/职业标签切换
-document.querySelectorAll('.filter-tags .tag').forEach(tag => {
+document.querySelectorAll('#page-challenge .filter-tags .tag').forEach(tag => {
     tag.addEventListener('click', function() {
         this.classList.toggle('active');
     });
 });
 
-// 全选/清除按钮
-document.querySelectorAll('.filter-btn').forEach(btn => {
+// 全选/清除按钮（仅随机挑战页）
+document.querySelectorAll('#page-challenge .filter-btn').forEach(btn => {
     btn.addEventListener('click', function() {
         const target = this.dataset.target;
         const container = target === 'star' 
@@ -337,6 +337,9 @@ async function loadOperators() {
         const result = await resp.json();
         if (result.code === 0) {
             operatorsData = result.data;
+            // 数据就绪后渲染"干员一览"页，并刷新黑名单里的干员名字
+            renderOperators();
+            renderExclude('operators');
         }
     } catch (err) {
         console.error('加载干员数据失败', err);
@@ -388,6 +391,130 @@ document.getElementById('excludeAllBtn').addEventListener('click', function() {
         setTimeout(() => loadExclude(), 500);
     }
 });
+
+// ===== 顶部导航栏页面切换 =====
+
+document.querySelectorAll('.nav-tab').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const page = this.dataset.page;
+
+        // 切换页签高亮
+        document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+
+        // 切换页面显示
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+        const target = document.getElementById('page-' + page);
+        if (target) target.classList.add('active');
+
+        // 切到干员一览时重新渲染（保证使用最新筛选状态）
+        if (page === 'operators') {
+            renderOperators();
+        }
+
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+});
+
+// ===== 干员一览：筛选与渲染 =====
+
+function getOpProfessionFilter() {
+    const container = document.getElementById('opProfessionFilter');
+    if (!container) return [];
+    return getSelectedTags(container);
+}
+
+function getOpStarFilter() {
+    const container = document.getElementById('opStarFilter');
+    if (!container) return [];
+    return getSelectedTags(container).map(Number);
+}
+
+function renderOperators() {
+    const grid = document.getElementById('operatorsGrid');
+    const hint = document.getElementById('opCountHint');
+    if (!grid) return;
+
+    const professions = getOpProfessionFilter();
+    const stars = getOpStarFilter();
+
+    // 筛选：职业、星级（任一为空表示不限制）
+    let list = operatorsData || [];
+    if (professions.length > 0) {
+        list = list.filter(op => professions.includes(op.profession));
+    }
+    if (stars.length > 0) {
+        list = list.filter(op => stars.includes(op.star));
+    }
+
+    // 排序：先按星级降序，再按职业，最后按名字
+    list = list.slice().sort((a, b) => {
+        if (b.star !== a.star) return b.star - a.star;
+        if (a.profession !== b.profession) return a.profession.localeCompare(b.profession, 'zh');
+        return a.name.localeCompare(b.name, 'zh');
+    });
+
+    if (hint) hint.textContent = `共 ${list.length} 位干员`;
+
+    if (list.length === 0) {
+        grid.innerHTML = `<p class="empty-hint">没有符合条件的干员</p>`;
+        return;
+    }
+
+    grid.innerHTML = list.map(op => {
+        const avatarUrl = getOperatorAvatarUrl(op.name, op.id);
+        return `
+            <div class="op-card" data-id="${op.id}">
+                <div class="op-card-avatar">
+                    <img
+                        src="${avatarUrl}"
+                        alt="${op.name}"
+                        class="op-avatar"
+                        loading="lazy"
+                        onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
+                    />
+                    <div class="avatar-placeholder" style="display:none;">🖼️</div>
+                </div>
+                <div class="op-card-name">${op.name}</div>
+                <div class="op-card-meta">
+                    <span class="op-card-star">${'⭐'.repeat(op.star)}</span>
+                    <span class="op-card-profession">${op.profession}</span>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// 干员一览页的筛选标签交互
+(function bindOperatorsFilters() {
+    const profContainer = document.getElementById('opProfessionFilter');
+    const starContainer = document.getElementById('opStarFilter');
+
+    [profContainer, starContainer].forEach(container => {
+        if (!container) return;
+        container.querySelectorAll('.tag').forEach(tag => {
+            tag.addEventListener('click', function() {
+                this.classList.toggle('active');
+                renderOperators();
+            });
+        });
+    });
+
+    // 全选 / 清除
+    document.querySelectorAll('.filter-btn[data-target^="op-"]').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const target = this.dataset.target; // op-profession / op-star
+            const container = target === 'op-star' ? starContainer : profContainer;
+            if (!container) return;
+
+            const isSelectAll = this.classList.contains('select-all');
+            container.querySelectorAll('.tag').forEach(tag => {
+                tag.classList.toggle('active', isSelectAll);
+            });
+            renderOperators();
+        });
+    });
+})();
 
 // ===== 启动 =====
 
