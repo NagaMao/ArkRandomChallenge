@@ -15,7 +15,15 @@
       "id": "24b360df48144bb2bd9a7c906bd147a6"
     }
   ],
+  // 方式A：每日北京时间 04:00（= UTC 20:00）定时刷新，始终启用
+  // 方式B：部署时通过 POST /api/refresh 刷新，由 ENABLE_DEPLOY_REFRESH 控制
+  "vars": {
+    // true  = 方式A + 方式B 同时启用
+    // false = 只启用方式A（每日定时）
+    "ENABLE_DEPLOY_REFRESH": "true"
+  },
   "triggers": {
     "crons": ["0 20 * * *"]
   }
 }
+

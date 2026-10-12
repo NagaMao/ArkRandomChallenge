@@ -1,0 +1,347 @@
+from flask import Flask, request, jsonify, Response
+from flask_cors import CORS
+from pyodide.ffi import run_sync
+from workers import wsgi, WorkerEntrypoint
+import json
+import random
+import time
+from data_fetcher import fetch_operators, fetch_stages, UPDATED_AT_KEY
+
+app = Flask(__name__)
+CORS(app)
+
+# ===== ????????? A / A+B? =====
+#   True  = ?? A + B??????????A?+ ?? /api/refresh ???????B?
+#   False = ??? A??????????/api/refresh ??????? 404?
+ENABLE_DEPLOY_REFRESH = True
+
+# /api/refresh ???????? B ???
+# ?????????????curl -X POST ".../api/refresh?token=xxx"
+# ???????? Secret?wrangler secret put REFRESH_TOKEN??
+# ???????????????????????????????????
+REFRESH_TOKEN = "ark-refresh-please-change-me"
+
+
+def _env_var(env, name, default=None):
+    """????????/Secret???????????"""
+    try:
+        return getattr(env, name)
+    except Exception:
+        return default
+
+
+# ===== ???? =====
+
+def kv_get(env, key):
+    """? KV ??????? dict ? None"""
+    raw = run_sync(env.DATA_KV.get(key))
+    if raw is None:
+        return None
+    return json.loads(str(raw))
+
+def kv_put(env, key, value):
+    """?? KV"""
+    run_sync(env.DATA_KV.put(key, json.dumps(value, ensure_ascii=False)))
+
+def load_exclude(env):
+    """?????"""
+    return kv_get(env, "exclude") or {"operators": [], "stages": []}
+
+def save_exclude(env, exclude_data):
+    """?????"""
+    kv_put(env, "exclude", exclude_data)
+
+def refresh_all_data(env):
+    """????????????????? KV?????
+
+    ? /api/refresh??? B?????????
+    ?? (????, ????)?
+    """
+    new_operators = run_sync(fetch_operators(env, force=True))
+    new_stages = run_sync(fetch_stages(env, force=True))
+    return len(new_operators), len(new_stages)
+
+
+# ===== ???? =====
+
+@app.get("/")
+@app.get("/<path:path>")
+def frontend(path=""):
+    assets = request.environ["workers.env"].ASSETS
+    asset_response = run_sync(assets.fetch(f"https://assets.local/{path}"))
+    body = run_sync(asset_response.bytes())
+    return Response(
+        body,
+        status=asset_response.status,
+        headers=asset_response.headers,
+    )
+
+# ===== API ?? =====
+
+@app.route("/api/operators", methods=["GET"])
+def get_operators():
+    """????????????
+
+    ??????? A???? fetch_operators(env)?? force??
+    ????? KV ?????? DATA_TTL???????????????
+    """
+    env = request.environ["workers.env"]
+    stars_param = request.args.get("stars", "")
+    professions_param = request.args.get("professions", "")
+    exclude = load_exclude(env)
+
+    operators_data = run_sync(fetch_operators(env)) or []
+
+    result = operators_data
+
+    # ?????
+    result = [op for op in result if op["id"] not in exclude["operators"]]
+
+    # ????
+    if stars_param:
+        stars = [int(s) for s in stars_param.split(",") if s]
+        result = [op for op in result if op["star"] in stars]
+
+    # ????
+    if professions_param:
+        professions = [p for p in professions_param.split(",") if p]
+        result = [op for op in result if op["profession"] in professions]
+
+    return jsonify({
+        "code": 0,
+        "data": result,
+        "total": len(result)
+    })
+
+@app.route("/api/stages", methods=["GET"])
+def get_stages():
+    """???????????? /api/operators???? A??"""
+    env = request.environ["workers.env"]
+    exclude = load_exclude(env)
+    stages_data = run_sync(fetch_stages(env)) or []
+    result = [s for s in stages_data if s["id"] not in exclude["stages"]]
+    return jsonify({
+        "code": 0,
+        "data": result,
+        "total": len(result)
+    })
+
+@app.route("/api/random-team", methods=["POST"])
+def random_team():
+    """??????"""
+    env = request.environ["workers.env"]
+    data = request.json
+    team_size = data.get("teamSize", 4)
+    stars = data.get("stars", [1, 2, 3, 4, 5, 6])
+    professions = data.get("professions", [])
+    random_skill = data.get("randomSkill", True)
+
+    exclude = load_exclude(env)
+
+    operators_data = run_sync(fetch_operators(env)) or []
+    stages_data = run_sync(fetch_stages(env)) or []
+
+    # ??????
+    available = [op for op in operators_data if op["id"] not in exclude["operators"]]
+
+    # ????
+    if stars:
+        available = [op for op in available if op["star"] in stars]
+
+    # ????
+    if professions:
+        available = [op for op in available if op["profession"] in professions]
+
+    # ????????
+    if len(available) < team_size:
+        return jsonify({
+            "code": 1,
+            "msg": f"??????????? {len(available)} ????????????????"
+        })
+
+    # ????
+    selected = random.sample(available, team_size)
+
+    # ????
+    for op in selected:
+        if random_skill and op["skills"]:
+            skill_idx = random.randint(0, len(op["skills"]) - 1)
+            op["selected_skill"] = op["skills"][skill_idx]
+        else:
+            op["selected_skill"] = op["skills"][0] if op["skills"] else None
+
+    # ????
+    available_stages = [s for s in stages_data if s["id"] not in exclude["stages"]]
+    if not available_stages:
+        return jsonify({
+            "code": 1,
+            "msg": "??????????????"
+        })
+
+    random_stage = random.choice(available_stages)
+
+    return jsonify({
+        "code": 0,
+        "data": {
+            "team": selected,
+            "stage": random_stage,
+            "team_size": team_size
+        }
+    })
+
+@app.route("/api/exclude", methods=["POST"])
+def update_exclude():
+    """?????"""
+    env = request.environ["workers.env"]
+    data = request.json
+    action = data.get("action")
+    target_type = data.get("type")
+    target_id = data.get("id")
+
+    if not target_id:
+        return jsonify({
+            "code": 1,
+            "msg": "???? ID"
+        })
+
+    exclude = load_exclude(env)
+    key = "operators" if target_type == "operator" else "stages"
+
+    if action == "add":
+        if target_id not in exclude[key]:
+            exclude[key].append(target_id)
+    elif action == "remove":
+        if target_id in exclude[key]:
+            exclude[key].remove(target_id)
+    else:
+        return jsonify({
+            "code": 1,
+            "msg": "??????????? add ? remove"
+        })
+
+    save_exclude(env, exclude)
+
+    return jsonify({
+        "code": 0,
+        "msg": "????",
+        "data": exclude
+    })
+
+@app.route("/api/exclude/list", methods=["GET"])
+def get_exclude():
+    """???????"""
+    env = request.environ["workers.env"]
+    return jsonify({
+        "code": 0,
+        "data": load_exclude(env)
+    })
+
+@app.route("/api/refresh", methods=["POST", "GET"])
+def refresh():
+    """????????? B??
+
+    - ? ENABLE_DEPLOY_REFRESH ?????? False ?????????? 404??
+    - ??????? token??token=xxx ???? X-Refresh-Token??
+
+    ???? Cloudflare Build ? Deploy command ?????????????
+    ??????????????"???????????"?
+    """
+    if not ENABLE_DEPLOY_REFRESH:
+        return jsonify({
+            "code": 404,
+            "msg": "??????????ENABLE_DEPLOY_REFRESH = False?"
+        }), 404
+
+    env = request.environ["workers.env"]
+
+    expected = _env_var(env, "REFRESH_TOKEN", REFRESH_TOKEN)
+    provided = request.args.get("token") or request.headers.get("X-Refresh-Token")
+
+    if provided != expected:
+        return jsonify({
+            "code": 403,
+            "msg": "???????"
+        }), 403
+
+    print("[????] ?????????????????...")
+    try:
+        op_count, stage_count = refresh_all_data(env)
+        print(f"[????] ???{op_count} ??? / {stage_count} ???")
+        return jsonify({
+            "code": 0,
+            "msg": "????",
+            "data": {
+                "operators": op_count,
+                "stages": stage_count
+            }
+        })
+    except Exception as e:
+        print(f"[????] ???{e}")
+        return jsonify({
+            "code": 1,
+            "msg": f"?????{e}"
+        }), 500
+
+@app.route("/api/version", methods=["GET"])
+def version():
+    """?????????????????"""
+    env = request.environ["workers.env"]
+    raw = run_sync(env.DATA_KV.get(UPDATED_AT_KEY))
+    last_updated = None
+    if raw is not None:
+        try:
+            last_updated = int(str(raw))
+        except (TypeError, ValueError):
+            last_updated = None
+    return jsonify({
+        "version": "1.0.0",
+        "lastUpdated": last_updated,          # ??????UTC?
+        "enableDeployRefresh": ENABLE_DEPLOY_REFRESH,
+        "serverTime": int(time.time() * 1000)
+    })
+
+# ===== ???? =====
+
+@app.errorhandler(404)
+def not_found(e):
+    return jsonify({
+        "code": 404,
+        "msg": "?????"
+    }), 404
+
+@app.errorhandler(500)
+def server_error(e):
+    return jsonify({
+        "code": 500,
+        "msg": "???????"
+    }), 500
+
+
+# ===== Worker ?? =====
+
+# Flask WSGI ????? fetch ????
+# wsgi.entrypoint(app) ?????? fetch ??? Default ??
+# Cloudflare ?????? Default ????????????
+# ?? scheduled?Cron Trigger???????? Default ???
+Default = wsgi.entrypoint(app)
+
+
+async def _scheduled(self, controller, env, ctx):
+    """??????? 04:00 (???? = UTC 20:00) ??????????
+
+    ???Cloudflare ? cron ???? UTC ???0 20 * * * ??????? 04:00?
+    """
+    print(f"[????] ???cron={controller.cron}????????????...")
+    try:
+        new_operators = await fetch_operators(env, force=True)
+        new_stages = await fetch_stages(env, force=True)
+        await env.DATA_KV.put("operators", json.dumps(new_operators, ensure_ascii=False))
+        await env.DATA_KV.put("stages", json.dumps(new_stages, ensure_ascii=False))
+        print(f"[????] ?????{len(new_operators)} ??? / {len(new_stages)} ???")
+    except Exception as e:
+        print(f"[????] ???????????{e}")
+
+
+# ? scheduled ???????? Default ??
+# ??? fetch ????? Cloudflare ????????
+Default.scheduled = _scheduled
