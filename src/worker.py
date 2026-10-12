@@ -5,52 +5,35 @@ from workers import wsgi
 import json
 import random
 from datetime import datetime, timezone
-from data_fetcher import fetch_operators, fetch_stages, get_data_version
-
-# ===== 配置开关 =====
-# 方式A（每日定时）始终启用；
-# 方式B（部署时刷新）由 Worker 环境变量 ENABLE_DEPLOY_REFRESH 控制：
-#   "true"/"1"/"yes"/"on"  → 方式A + 方式B 同时启用
-#   "false"/"0"/"no"/"off" → 只启用方式A
-# 可通过 wrangler.jsonc 的 vars 或 `wrangler secret put` 配置。
-ENABLE_DEPLOY_REFRESH_DEFAULT = True
-
-
-def _env_str(env, name):
-    """从 Worker env 读取字符串变量。
-
-    Cloudflare Python Workers 的 vars / secrets 都通过 env 对象暴露
-    （而不是 Python 的 os.environ）。未设置时返回 None。
-    """
-    try:
-        raw = getattr(env, name, None)
-    except Exception:
-        return None
-    if raw is None:
-        return None
-    text = str(raw).strip()
-    if text in ("", "undefined", "null"):
-        return None
-    return text
-
-
-def _deploy_refresh_enabled(env):
-    """读取部署时刷新开关（方式B）。未配置时回退到默认值。"""
-    text = _env_str(env, "ENABLE_DEPLOY_REFRESH")
-    if text is None:
-        return ENABLE_DEPLOY_REFRESH_DEFAULT
-    return text.lower() in ("1", "true", "yes", "on")
-
-
-def _get_refresh_token(env):
-    """读取方式B的鉴权 token。未配置返回 None（表示不校验）。"""
-    return _env_str(env, "REFRESH_TOKEN")
-
+from data_fetcher import fetch_operators, fetch_stages
 
 app = Flask(__name__)
 CORS(app)
 
-# ===== 工具函数 =====
+# ===== 刷新开关 =====
+# True  = 方式 A（每日定时）+ 方式 B（部署时刷新）同时启用
+# False = 只启用方式 A（每日定时），/api/refresh 返回 404
+# 默认值可被 wrangler.jsonc 的 vars.ENABLE_DEPLOY_REFRESH 覆盖。
+ENABLE_DEPLOY_REFRESH_DEFAULT = True
+
+
+def _parse_bool(value, default=False):
+    """把字符串/布尔环境变量解析为布尔值。"""
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+
+def deploy_refresh_enabled(env):
+    """读取方式 B（部署时刷新）开关，未配置时回退到默认值。"""
+    try:
+        value = getattr(env, "ENABLE_DEPLOY_REFRESH", None)
+    except Exception:
+        value = None
+    return _parse_bool(value, ENABLE_DEPLOY_REFRESH_DEFAULT)
+
 
 def kv_get(env, key):
     """从 KV 读取数据，返回 dict 或 None"""
@@ -70,6 +53,20 @@ def load_exclude(env):
 def save_exclude(env, exclude_data):
     """保存黑名单"""
     kv_put(env, "exclude", exclude_data)
+
+
+async def refresh_all_data(env):
+    """强制从网络重新拉取干员与关卡数据并写入 KV。
+
+    供方式 A（定时任务）与方式 B（部署时刷新）共用。
+    返回 (干员数量, 关卡数量)。
+    """
+    new_operators = await fetch_operators(env, force=True)
+    new_stages = await fetch_stages(env, force=True)
+    await env.DATA_KV.put("operators", json.dumps(new_operators, ensure_ascii=False))
+    await env.DATA_KV.put("stages", json.dumps(new_stages, ensure_ascii=False))
+    await env.DATA_KV.put("data_updated_at", datetime.now(timezone.utc).isoformat())
+    return len(new_operators), len(new_stages)
 
 # ===== 前端路由 =====
 
@@ -245,10 +242,68 @@ def get_exclude():
 def version():
     """获取数据版本"""
     env = request.environ["workers.env"]
-    return jsonify(get_data_version(env))
+    updated_at = kv_get(env, "data_updated_at")
+    return jsonify({
+        "version": "1.0.0",
+        "lastUpdated": updated_at,
+    })
 
-# 注意：/api/refresh（方式B）由 Default.fetch 直接拦截处理，
-# 不经过 Flask，以确保刷新在真正的异步上下文中执行。
+
+@app.route("/api/refresh", methods=["POST"])
+def manual_refresh():
+    """方式 B：部署时刷新（由 ENABLE_DEPLOY_REFRESH 开关控制）。
+
+    - 开关为 false 时：接口不可用，返回 404。
+    - 开关为 true 时：需携带正确的 REFRESH_TOKEN（请求头 X-Refresh-Token 或
+      query 参数 ?token=），校验通过后强制刷新 KV 中的干员与关卡数据。
+    """
+    env = request.environ["workers.env"]
+
+    # 开关关闭 -> 视为接口不存在
+    if not deploy_refresh_enabled(env):
+        return jsonify({
+            "code": 404,
+            "msg": "接口不存在"
+        }), 404
+
+    # 鉴权：未配置 REFRESH_TOKEN 时禁用，避免接口被公开滥用
+    try:
+        expected_token = getattr(env, "REFRESH_TOKEN", None)
+    except Exception:
+        expected_token = None
+
+    if not expected_token:
+        return jsonify({
+            "code": 403,
+            "msg": "未配置 REFRESH_TOKEN，刷新接口已禁用"
+        }), 403
+
+    provided_token = request.headers.get("X-Refresh-Token") or request.args.get("token")
+    if provided_token != str(expected_token):
+        return jsonify({
+            "code": 403,
+            "msg": "刷新令牌无效"
+        }), 403
+
+    # 执行刷新
+    try:
+        op_count, stage_count = run_sync(refresh_all_data(env))
+    except Exception as e:
+        return jsonify({
+            "code": 1,
+            "msg": f"刷新失败，保留旧数据：{e}"
+        }), 500
+
+    updated_at = kv_get(env, "data_updated_at")
+    return jsonify({
+        "code": 0,
+        "msg": "刷新成功",
+        "data": {
+            "operators": op_count,
+            "stages": stage_count,
+            "lastUpdated": updated_at,
+        }
+    })
 
 # ===== 错误处理 =====
 
@@ -267,110 +322,29 @@ def server_error(e):
     }), 500
 
 
-# ===== 数据刷新 =====
+# ===== Worker 入口 =====
 
-async def refresh_data(env):
-    """强制从网络刷新干员与关卡数据并写入 KV。
-
-    返回数据条数统计。任一步失败时抛出异常（调用方保留旧数据）。
-    注意：本函数必须在真正的异步上下文（fetch / scheduled handler）中 await，
-    不要放在 Flask 的同步视图里用 run_sync 调用。
-    """
-    print("[刷新] 开始刷新干员与关卡数据...")
-    new_operators = await fetch_operators(env, force=True)
-    new_stages = await fetch_stages(env, force=True)
-
-    if not new_operators or not new_stages:
-        raise RuntimeError("数据源返回空结果")
-
-    await env.DATA_KV.put("operators", json.dumps(new_operators, ensure_ascii=False))
-    await env.DATA_KV.put("stages", json.dumps(new_stages, ensure_ascii=False))
-    await env.DATA_KV.put("data_updated_at", datetime.now(timezone.utc).isoformat())
-
-    stats = {
-        "operators": len(new_operators),
-        "stages": len(new_stages),
-    }
-    print(f"[刷新] 完成：{stats['operators']} 位干员 / {stats['stages']} 个关卡")
-    return stats
-
-
-# Cloudflare 规定：fetch / scheduled 等 handler 必须定义在入口类 `Default` 中。
-# wsgi.entrypoint(app) 只会生成一个仅含 fetch 的类，因此这里显式继承并补上 scheduled，
-# 确保两者被注册到同一个入口类里。
+# Flask WSGI 入口：wsgi.entrypoint(app) 返回一个名为 Default 的入口类
+# （只包含 fetch 方法）。
+#
+# ⚠️ Cloudflare 规定 scheduled handler 必须定义在入口类 Default 中。
+# 因此这里通过【继承】WSGI 入口类，把 scheduled 方法补进同一个 Default 类。
+# 若像过去那样另起一个 ScheduledHandler 类，scheduled 永远不会被触发，
+# KV 里的 operators 会一直停留在旧快照，线上干员一览也就没有最新干员。
 _WsgiDefault = wsgi.entrypoint(app)
 
 
 class Default(_WsgiDefault):
-    """Worker 入口类：处理 HTTP 请求（fetch）与定时任务（scheduled）。
-
-    - fetch：拦截 POST /api/refresh（方式B），其余请求交给 Flask(WSGI) 处理。
-    - scheduled：每日定时刷新（方式A）。
-    """
-
-    async def fetch(self, request, *args, **kwargs):
-        # 在真正的异步上下文里处理刷新接口，避免在 Flask 同步栈中用 run_sync 嵌套 KV 操作
-        try:
-            url = getattr(request, "url", "") or ""
-            method = str(getattr(request, "method", "") or "").upper()
-            if "/api/refresh" in url and method in ("POST", "GET"):
-                return await self._handle_refresh(request)
-        except Exception as e:  # noqa: BLE001
-            print(f"[refresh] 判断请求失败，交给 WSGI 处理：{e}")
-
-        return await super().fetch(request, *args, **kwargs)
-
-    async def _handle_refresh(self, request):
-        from js import Response
-
-        env = self.env
-        print(f"[refresh] 收到刷新请求：{getattr(request, 'url', '')}")
-
-        def reply(payload, status):
-            return Response.new(
-                json.dumps(payload, ensure_ascii=False),
-                status=status,
-                headers={"content-type": "application/json; charset=utf-8"},
-            )
-
-        # 开关关闭时直接返回成功（不刷新），避免让部署命令因非 200 而失败
-        if not _deploy_refresh_enabled(env):
-            print("[refresh] 方式B已关闭（ENABLE_DEPLOY_REFRESH=false），跳过刷新")
-            return reply({"code": 0, "msg": "方式B已关闭，跳过刷新（方式A仍生效）"}, 200)
-
-        # 可选鉴权：仅当配置了 REFRESH_TOKEN 时才校验
-        expected = _get_refresh_token(env)
-        if expected:
-            provided = None
-            try:
-                headers = getattr(request, "headers", None)
-                if headers is not None:
-                    provided = headers.get("X-Refresh-Token")
-                if not provided:
-                    url = getattr(request, "url", "") or ""
-                    from urllib.parse import urlsplit, parse_qs
-                    qs = parse_qs(urlsplit(url).query)
-                    provided = (qs.get("token") or [None])[0]
-            except Exception as e:  # noqa: BLE001
-                print(f"[refresh] 解析 token 失败：{e}")
-
-            if provided != expected:
-                return reply({"code": 403, "msg": "无权访问：token 缺失或不正确"}, 403)
-
-        try:
-            stats = await refresh_data(env)
-            return reply({"code": 0, "msg": "刷新成功", "data": stats}, 200)
-        except Exception as e:  # noqa: BLE001
-            print(f"[refresh] 刷新失败：{e}")
-            return reply({"code": 1, "msg": f"刷新失败：{e}"}, 500)
+    """Worker 入口类：同时承载 fetch（WSGI）与 scheduled（定时刷新）。"""
 
     async def scheduled(self, controller, env, ctx):
-        """方式A：每日 04:00（北京时间 = UTC 20:00）刷新数据。
+        """方式 A：每日北京时间 04:00（= UTC 20:00）强制刷新数据。
 
-        无论 ENABLE_DEPLOY_REFRESH 开关如何，方式A始终启用。
+        无论 ENABLE_DEPLOY_REFRESH 开关如何，方式 A 始终启用。
         """
-        print("[定时任务] 触发每日刷新...")
+        print("[定时任务] 开始刷新干员与关卡数据...")
         try:
-            await refresh_data(env)
+            op_count, stage_count = await refresh_all_data(env)
+            print(f"[定时任务] 刷新完成：{op_count} 位干员 / {stage_count} 个关卡")
         except Exception as e:
             print(f"[定时任务] 刷新失败，保留旧数据：{e}")

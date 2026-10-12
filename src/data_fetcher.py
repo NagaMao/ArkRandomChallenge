@@ -204,25 +204,3 @@ def parse_stages(raw_data):
         })
 
     return result
-
-
-def get_data_version(env=None):
-    """返回数据版本信息。
-
-    若提供 env 且 KV 中存在 `data_updated_at`，则返回最近一次刷新的时间戳。
-    """
-    last_updated = None
-    if env is not None:
-        try:
-            from pyodide.ffi import run_sync
-
-            raw = run_sync(env.DATA_KV.get("data_updated_at"))
-            if raw is not None:
-                last_updated = str(raw)
-        except Exception:
-            last_updated = None
-
-    return {
-        "version": "1.0.0",
-        "lastUpdated": last_updated,
-    }

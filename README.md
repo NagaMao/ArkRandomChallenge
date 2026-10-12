@@ -106,7 +106,8 @@ ENABLE_DEPLOY_REFRESH_DEFAULT = True
 wrangler secret put REFRESH_TOKEN
 ```
 
-   接口也接受 `X-Refresh-Token` 请求头，安全性高于 URL 查询参数。
+      接口同时接受 `X-Refresh-Token` 请求头（推荐，安全性高于 URL 查询参数）
+   与 `?token=` 查询参数。
 
 2. 在 Cloudflare Dashboard → 你的 Worker → Settings → Builds → **Deploy command** 填写：
 
@@ -120,8 +121,9 @@ uv run pywrangler deploy && curl -fsS -X POST "https://arkrandomchallenge.xyz/ap
 uv run pywrangler deploy && curl -fsS -X POST -H "X-Refresh-Token: 你的token" "https://arkrandomchallenge.xyz/api/refresh"
 ```
 
-> 未配置 `REFRESH_TOKEN` 时，`/api/refresh` 会拒绝所有请求（返回 403），
-> 避免接口被公开滥用。
+> ⚠️ 未配置 `REFRESH_TOKEN` 时，`/api/refresh` 会拒绝所有请求（返回 403），
+> 避免接口被公开滥用。因此 Deploy command 中的 `curl` **必须携带正确的 token**，
+> 否则会因为 403（`curl -f` 判定失败）而中断 `&&` 链路。
 
 ## 部署步骤
 
